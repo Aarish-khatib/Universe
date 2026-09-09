@@ -12,7 +12,10 @@ import {
 } from "react";
 
 import type { EntityId } from "@known-universe/core";
+import { METERS_PER_UNIT, convertDistance } from "@known-universe/core";
+import type { SpaceEntity } from "@known-universe/core";
 import type { UniverseState } from "@known-universe/engine";
+import { scaleBandFor, scaleForBand } from "@known-universe/engine";
 
 type HudMode = "explore" | "science";
 
@@ -431,18 +434,25 @@ const HUD_CSS = `
   gap: 12px;
   border: 0;
   border-bottom: 1px solid var(--hud-line);
-  padding: 11px 13px;
+  padding: 10px 12px;
   text-align: left;
   color: var(--hud-text);
   background: transparent;
   cursor: pointer;
 }
 
+.hud-search-result:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.hud-search-result.is-selected {
+  background: rgba(95, 214, 238, 0.18);
+  border-radius: 8px;
+}
+
 .hud-search-result:last-child {
   border-bottom: 0;
 }
-
-.hud-search-result:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 
@@ -775,23 +785,25 @@ const HUD_CSS = `
 }
 
 .hud-metric-value {
-  margin-top: 5px;
-  overflow: hidden;
+  margin: 4px 0;
   color: var(--hud-white);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-feature-settings: "lnum", "tnum";
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .hud-metric-hint {
-  margin-top: 2px;
+  margin: 2px 0 0;
   color: var(--hud-muted);
   font-size: 9px;
+  font-feature-settings: "lnum", "tnum";
 }
 
 .hud-confidence {
-  margin-top: 15px;
-  padding-top: 13px;
+  margin: 12px 0;
+  padding-top: 11px;
   border-top: 1px solid var(--hud-line);
 }
 
@@ -799,7 +811,7 @@ const HUD_CSS = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .hud-confidence-value {
@@ -1907,12 +1919,16 @@ function formatDistanceMeters(meters: number): string {
     return `${formatNumber(meters, 1)} m`;
   }
 
-  if (abs < 1_000_000) {
+  if (abs < 1_000_000_000) {
     return `${formatNumber(meters / 1_000, 2)} km`;
   }
 
+  if (abs < 1_000_000_000_000) {
+    return `${formatNumber(meters / 1_000_000_000, 2)} million km`;
+  }
+
   if (abs < 149_597_870_700) {
-    return `${formatNumber(meters / 1_000_000, 2)} million km`;
+    return `${formatNumber(meters / 149_597_870_700, 2)} AU`;
   }
 
   if (abs < 9.4607e15) {
@@ -2035,9 +2051,104 @@ function knowledgeColorClass(value?: KnowledgeClass): string {
   return "";
 }
 
+function mapSpaceEntityToHud(entity: SpaceEntity): HudEntityLike {
+  // The entity's physical properties come wrapped in ScientificValue objects
+  // that carry both the number and evidence/confidence metadata.
+  const physical = entity.physical;
+
+  // Pull the raw values out of the wrappers.  If any property is missing,
+  // the optional-chaining pattern ensures we get undefined rather than crashing.
+  const radiusMeters = physical?.radiusM?.value;
+  const massKg = physical?.massKg?.value;
+  const densityKgM3 = physical?.densityKgM3?.value;
+  const temperatureK = physical?.temperatureK?.value;
+  const surfaceGravityMs2 = physical?.surfaceGravityMs2?.value;
+
+  // Build the HudEntityLike shape that the HUD components expect.
+  // Fields that the underlying data doesn't provide are left as undefined
+  // rather than being fake- —  the UI will simply show "Unknown" which is
+  // more honest than inventing a number.
+  return {
+    id: entity.id,
+    name: entity.name,
+    kind: entity.kind,
+    parentId: entity.parentId,
+    frameId: entity.spatial && entity.spatial.frameId,
+    description: entity.summary,
+    subtype: undefined,
+    // The reality class label comes from the evidence string on the radius
+    // measurement.  "measured" → "Measured", "estimated" → "Estimated", etc.
+    realityClass: physical?.radiusM?.evidence as KnowledgeClass | undefined,
+    evidenceLevel: physical?.radiusM?.evidence,
+    knowledge: {
+      // Confidence is stored as a 0–1 number on the radius measurement.
+      confidence: physical?.radiusM?.confidence,
+      // Mirror the evidence string as a class name so the HUD can colour-code
+      // the entity row (e.g. "is-accent" for observed/measured bodies).
+      class: physical?.radiusM?.evidence as KnowledgeClass | undefined,
+      // Preserve the source IDs so the "More Information" section can cite
+      // where the numbers came from.
+      sources: entity.sourceIds != null ? [...entity.sourceIds] : undefined,
+    },
+    scientific: {
+      // The scientific block mirrors knowledge; keep them in sync so either
+      // can be used by downstream code without a separate mapping step.
+      confidence: physical?.radiusM?.confidence,
+      evidenceLevel: physical?.radiusM?.evidence,
+      sources: entity.sourceIds != null ? [...entity.sourceIds] : undefined,
+    },
+    physical: {
+      // These are the numeric values the HUD metric cards display.
+      radiusMeters,
+      massKg,
+      densityKgM3,
+      temperatureK,
+      // Luminosity is only meaningful for stars; for planets/moons it's
+      // always undefined — showing "Unknown" is the correct honest response.
+      luminosityW: undefined,
+      // Surface gravity derived from mass / radius² using the gravitational
+      // constant.  If the catalog didn't compute it, we leave it undefined.
+      gravityMs2: surfaceGravityMs2,
+      // Albedo (reflectivity) isn't part of the standard solar-system body
+      // definitions, so we leave it undefined rather than guessing.
+      albedo: undefined,
+    },
+    properties: {
+      // The "quick-stats" strip beneath the main metrics re-uses these same
+      // values so the layout stays consistent without duplicated logic.
+      radiusMeters,
+      massKg,
+      densityKgM3,
+      temperatureK,
+      luminosityW: undefined,
+      gravityMs2: surfaceGravityMs2,
+      albedo: undefined,
+    },
+    // Free-form metadata — aliases (a.k.a. alternate names) and tags (topic
+    // labels used in search/filter).  If the entity has neither, we assign
+    // an empty array rather than omitting the key so the UI rendering code
+    // doesn't need extra null checks.
+    metadata: {
+      aliases: entity.aliases != null ? [...entity.aliases] : [],
+      tags: entity.tags != null ? [...entity.tags] : [],
+    },
+  };
+}
+
 function getHudEntity(entity: unknown): HudEntityLike | undefined {
   if (!entity || typeof entity !== "object") {
     return undefined;
+  }
+
+  // Check if it's already a HudEntityLike (has HudEntityLike properties)
+  const candidate = entity as Record<string, unknown>;
+  if ("physical" in candidate && candidate.physical && typeof candidate.physical === "object" && "radiusMeters" in (candidate.physical as Record<string, unknown>)) {
+    return entity as HudEntityLike;
+  }
+
+  // Check if it's a SpaceEntity (has physical.radiusM structure)
+  if ("physical" in candidate && candidate.physical && typeof candidate.physical === "object" && "radiusM" in (candidate.physical as Record<string, unknown>)) {
+    return mapSpaceEntityToHud(entity as SpaceEntity);
   }
 
   return entity as HudEntityLike;

@@ -30,6 +30,7 @@ import {
   MILLISECONDS_PER_DAY,
   MU_SUN,
   MU_EARTH,
+  GRAVITATIONAL_CONSTANT,
   FRAME_ICRS,
   FRAME_GALACTIC,
   FRAME_ECLIPTIC_J2000,
@@ -160,6 +161,8 @@ export interface SolarSystemBodyDefinition {
 
   massKg: number;
 
+  temperatureK?: number;
+
   summary: string;
 
   sourceIds: readonly SourceId[];
@@ -176,6 +179,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
     radiusM: 695_700_000,
 
     massKg: 1.98847e30,
+
+    temperatureK: 5_778,
 
     summary: "The star at the center of the Solar System.",
 
@@ -195,6 +200,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
 
     massKg: 3.3011e23,
 
+    temperatureK: 440,
+
     summary: "The innermost planet of the Solar System.",
 
     sourceIds: [SOURCE_NASA_PLANET_FACTS.id, SOURCE_JPL_APPROX_PLANETS.id],
@@ -212,6 +219,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
     radiusM: 6_051_800,
 
     massKg: 4.8675e24,
+
+    temperatureK: 737,
 
     summary: "The second planet from the Sun.",
 
@@ -231,6 +240,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
 
     massKg: 5.97237e24,
 
+    temperatureK: 288,
+
     summary: "The third planet from the Sun and the present home of humanity.",
 
     sourceIds: [SOURCE_NASA_PLANET_FACTS.id, SOURCE_JPL_APPROX_PLANETS.id],
@@ -248,6 +259,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
     radiusM: 1_737_400,
 
     massKg: 7.342e22,
+
+    temperatureK: 250,
 
     summary: "Earth's natural satellite.",
 
@@ -267,6 +280,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
 
     massKg: 6.4171e23,
 
+    temperatureK: 210,
+
     summary: "The fourth planet from the Sun.",
 
     sourceIds: [SOURCE_NASA_PLANET_FACTS.id, SOURCE_JPL_APPROX_PLANETS.id],
@@ -284,6 +299,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
     radiusM: 69_911_000,
 
     massKg: 1.8982e27,
+
+    temperatureK: 165,
 
     summary: "The largest planet in the Solar System.",
 
@@ -303,6 +320,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
 
     massKg: 5.6834e26,
 
+    temperatureK: 134,
+
     summary: "The sixth planet from the Sun.",
 
     sourceIds: [SOURCE_NASA_PLANET_FACTS.id, SOURCE_JPL_APPROX_PLANETS.id],
@@ -321,6 +340,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
 
     massKg: 8.681e25,
 
+    temperatureK: 76,
+
     summary: "The seventh planet from the Sun.",
 
     sourceIds: [SOURCE_NASA_PLANET_FACTS.id, SOURCE_JPL_APPROX_PLANETS.id],
@@ -338,6 +359,8 @@ export const SOLAR_SYSTEM_BODIES: readonly SolarSystemBodyDefinition[] = [
     radiusM: 24_622_000,
 
     massKg: 1.02413e26,
+
+    temperatureK: 72,
 
     summary: "The eighth major planet from the Sun.",
 
@@ -736,6 +759,40 @@ export const MOON_APPROXIMATE_ORBIT: ClassicalOrbitalElements = {
 export function solarSystemBodyDefinitionToEntity(
   definition: SolarSystemBodyDefinition,
 ): SpaceEntity {
+  const physical: SpaceEntity["physical"] = {
+    radiusM: scientificNumber(
+      definition.radiusM,
+      "measured",
+      definition.sourceIds,
+    ),
+
+    massKg: scientificNumber(
+      definition.massKg,
+      "derived",
+      definition.sourceIds,
+    ),
+
+    densityKgM3: scientificNumber(
+      definition.massKg / ((4/3) * Math.PI * Math.pow(definition.radiusM, 3)),
+      "derived",
+      definition.sourceIds,
+    ),
+
+    surfaceGravityMs2: scientificNumber(
+      GRAVITATIONAL_CONSTANT * definition.massKg / Math.pow(definition.radiusM, 2),
+      "derived",
+      definition.sourceIds,
+    ),
+  };
+
+  if (definition.temperatureK !== undefined) {
+    physical.temperatureK = scientificNumber(
+      definition.temperatureK,
+      "measured",
+      definition.sourceIds,
+    );
+  }
+
   const entity: SpaceEntity = {
     id: definition.id,
 
@@ -747,19 +804,7 @@ export function solarSystemBodyDefinitionToEntity(
 
     sourceIds: [...definition.sourceIds],
 
-    physical: {
-      radiusM: scientificNumber(
-        definition.radiusM,
-        "measured",
-        definition.sourceIds,
-      ),
-
-      massKg: scientificNumber(
-        definition.massKg,
-        "derived",
-        definition.sourceIds,
-      ),
-    },
+    physical,
   };
 
   if (definition.parentId) {
