@@ -1,204 +1,621 @@
-﻿import {
+import {
+
   AdditiveBlending,
+
+  AmbientLight,
+
+  BackSide,
+
   BufferAttribute,
+
   BufferGeometry,
+
+  CanvasTexture,
+
   Color,
+
+  DoubleSide,
+
   Group,
+
   LineBasicMaterial,
+
   LineLoop,
+
+  Material,
+
   Mesh,
+
   MeshBasicMaterial,
-  NormalBlending,
+
+  MeshStandardMaterial,
+
   PerspectiveCamera,
+
+  PointLight,
+
   Points,
+
   PointsMaterial,
+
   Raycaster,
+
+  RepeatWrapping,
+
   REVISION,
+
+  RingGeometry,
+
   Scene,
+
   SphereGeometry,
+
   SRGBColorSpace,
+
   Vector2,
+
   Vector3,
+
   WebGLRenderer,
+
 } from "three";
+
+
 
 import { METERS_PER_UNIT } from "@known-universe/core";
 
+
+
 import type {
+
   DistanceUnit,
+
   EntityId,
+
   EntityKind,
+
   FrameId,
+
   SpaceEntity,
+
   SpatialPosition,
+
   Vec3,
+
 } from "@known-universe/core";
 
+
+
 import type {
+
   RenderFrame,
+
   UniverseRenderer,
+
   UniverseState,
+
 } from "@known-universe/engine";
 
-export const RENDER_THREE_VERSION = 2;
+
+
+export const RENDER_THREE_VERSION = 4;
+
+
 
 function clamp(value: number, minimum: number, maximum: number): number {
+
   if (!Number.isFinite(value)) {
+
     return minimum;
+
   }
+
+
 
   return Math.min(maximum, Math.max(minimum, value));
+
 }
+
+
 
 function positiveFinite(value: number, fallback: number): number {
+
   if (!Number.isFinite(value) || value <= 0) {
+
     return fallback;
+
   }
+
+
 
   return value;
+
 }
 
-function degreesToRadians(degrees: number | undefined): number {
-  if (degrees === undefined || !Number.isFinite(degrees)) {
+
+
+function degreesToRadians(value: number | undefined): number {
+
+  if (value === undefined || !Number.isFinite(value)) {
+
     return 0;
+
   }
 
-  return (degrees * Math.PI) / 180;
+
+
+  return (value * Math.PI) / 180;
+
 }
+
+
+
+function hashString(value: string): number {
+
+  let hash = 2166136261;
+
+
+
+  for (let index = 0; index < value.length; index++) {
+
+    hash ^= value.charCodeAt(index);
+
+    hash = Math.imul(hash, 16777619);
+
+  }
+
+
+
+  return hash >>> 0;
+
+}
+
+
+
+class SeededRandom {
+
+  private state: number;
+
+
+
+  constructor(seed: number) {
+
+    this.state = seed >>> 0;
+
+  }
+
+
+
+  next(): number {
+
+    this.state += 0x6d2b79f5;
+
+
+
+    let value = this.state;
+
+
+
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+
+
+
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+
+
+
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+
+  }
+
+
+
+  range(minimum: number, maximum: number): number {
+
+    return minimum + (maximum - minimum) * this.next();
+
+  }
+
+}
+
+
+
+interface BodyVisualStyle {
+
+  base: string;
+
+  secondary: string;
+
+  accent: string;
+
+  minimumRadius: number;
+
+  roughness: number;
+
+  emissive: string;
+
+  emissiveIntensity: number;
+
+  atmosphere: string | null;
+
+  atmosphereOpacity: number;
+
+}
+
+
+
+const DEFAULT_STYLE: BodyVisualStyle = {
+
+  base: "#7ea7d8",
+
+  secondary: "#aec7e7",
+
+  accent: "#45698f",
+
+  minimumRadius: 0.22,
+
+  roughness: 0.88,
+
+  emissive: "#000000",
+
+  emissiveIntensity: 0,
+
+  atmosphere: null,
+
+  atmosphereOpacity: 0,
+
+};
+
+
+
+const BODY_STYLES: Readonly<Record<string, BodyVisualStyle>> = {
+
+  sun: {
+
+    base: "#ffbd5b",
+
+    secondary: "#ff793e",
+
+    accent: "#fff0ad",
+
+    minimumRadius: 0.95,
+
+    roughness: 0.75,
+
+    emissive: "#ff9a38",
+
+    emissiveIntensity: 2.7,
+
+    atmosphere: "#ffc566",
+
+    atmosphereOpacity: 0.14,
+
+  },
+
+
+
+  mercury: {
+
+    base: "#8c8882",
+
+    secondary: "#aaa59c",
+
+    accent: "#57534f",
+
+    minimumRadius: 0.17,
+
+    roughness: 1,
+
+    emissive: "#000000",
+
+    emissiveIntensity: 0,
+
+    atmosphere: null,
+
+    atmosphereOpacity: 0,
+
+  },
+
+
+
+  venus: {
+
+    base: "#d9a55a",
+
+    secondary: "#f2c87b",
+
+    accent: "#9f6a35",
+
+    minimumRadius: 0.235,
+
+    roughness: 0.85,
+
+    emissive: "#241507",
+
+    emissiveIntensity: 0.08,
+
+    atmosphere: "#efbc68",
+
+    atmosphereOpacity: 0.1,
+
+  },
+
+
+
+  earth: {
+
+    base: "#2768bd",
+
+    secondary: "#3f975d",
+
+    accent: "#d4d8bd",
+
+    minimumRadius: 0.245,
+
+    roughness: 0.72,
+
+    emissive: "#031523",
+
+    emissiveIntensity: 0.04,
+
+    atmosphere: "#54b9ff",
+
+    atmosphereOpacity: 0.17,
+
+  },
+
+
+
+  moon: {
+
+    base: "#9b9b98",
+
+    secondary: "#bdbbb5",
+
+    accent: "#545552",
+
+    minimumRadius: 0.125,
+
+    roughness: 1,
+
+    emissive: "#000000",
+
+    emissiveIntensity: 0,
+
+    atmosphere: null,
+
+    atmosphereOpacity: 0,
+
+  },
+
+
+
+  mars: {
+
+    base: "#a84f37",
+
+    secondary: "#d1764f",
+
+    accent: "#6c3027",
+
+    minimumRadius: 0.205,
+
+    roughness: 0.96,
+
+    emissive: "#150403",
+
+    emissiveIntensity: 0.03,
+
+    atmosphere: "#d8805d",
+
+    atmosphereOpacity: 0.045,
+
+  },
+
+
+
+  jupiter: {
+
+    base: "#caa076",
+
+    secondary: "#e6c49c",
+
+    accent: "#9e634a",
+
+    minimumRadius: 0.53,
+
+    roughness: 0.81,
+
+    emissive: "#160d08",
+
+    emissiveIntensity: 0.025,
+
+    atmosphere: "#d9b384",
+
+    atmosphereOpacity: 0.045,
+
+  },
+
+
+
+  saturn: {
+
+    base: "#d9bd82",
+
+    secondary: "#eed7a5",
+
+    accent: "#aa8c5c",
+
+    minimumRadius: 0.47,
+
+    roughness: 0.84,
+
+    emissive: "#120e06",
+
+    emissiveIntensity: 0.02,
+
+    atmosphere: "#dec995",
+
+    atmosphereOpacity: 0.04,
+
+  },
+
+
+
+  uranus: {
+
+    base: "#85cdd2",
+
+    secondary: "#b4e5e2",
+
+    accent: "#5fa5b1",
+
+    minimumRadius: 0.35,
+
+    roughness: 0.73,
+
+    emissive: "#071719",
+
+    emissiveIntensity: 0.025,
+
+    atmosphere: "#9de5e4",
+
+    atmosphereOpacity: 0.08,
+
+  },
+
+
+
+  neptune: {
+
+    base: "#3f67ce",
+
+    secondary: "#6e8de1",
+
+    accent: "#294795",
+
+    minimumRadius: 0.345,
+
+    roughness: 0.74,
+
+    emissive: "#050b20",
+
+    emissiveIntensity: 0.035,
+
+    atmosphere: "#6286ff",
+
+    atmosphereOpacity: 0.095,
+
+  },
+
+};
+
+
+
+function styleForEntity(entity: SpaceEntity): BodyVisualStyle {
+
+  return BODY_STYLES[entity.id.toLowerCase()] ?? DEFAULT_STYLE;
+
+}
+
+
 
 function entityRadiusMeters(entity: SpaceEntity): number {
+
   const radius = entity.physical?.radiusM?.value;
 
+
+
   if (radius !== undefined && Number.isFinite(radius) && radius > 0) {
+
     return radius;
+
   }
+
+
 
   return 1;
+
 }
 
-function minimumMarkerRadius(kind: EntityKind): number {
-  switch (kind) {
-    case "star":
-      return 0.045;
 
-    case "planet":
-    case "dwarf-planet":
-      return 0.035;
 
-    case "moon":
-      return 0.025;
+function minimumMarkerRadius(entity: SpaceEntity): number {
 
-    case "black-hole":
-    case "neutron-star":
-      return 0.035;
+  const style = styleForEntity(entity);
 
-    case "galaxy":
-    case "galaxy-group":
-    case "galaxy-cluster":
-    case "cosmic-structure":
-      return 0.06;
 
-    case "nebula":
-    case "star-cluster":
-      return 0.045;
 
-    case "asteroid":
-    case "comet":
-    case "satellite":
-    case "spacecraft":
-    case "debris":
-      return 0.012;
+  if (entity.kind === "star") {
 
-    case "surface-feature":
-    case "building":
-    case "city":
-    case "country":
-      return 0.02;
+    return Math.max(style.minimumRadius, 0.7);
+
   }
+
+
+
+  return style.minimumRadius;
+
 }
+
+
 
 function entitySceneRadius(
+
   entity: SpaceEntity,
-  metersPerSceneUnit = 1,
-  minimum?: number,
+
+  metersPerSceneUnit: number,
+
 ): number {
-  const divisor = positiveFinite(metersPerSceneUnit, 1);
 
-  const physical = entityRadiusMeters(entity) / divisor;
+  const physical =
 
-  const markerMinimum = minimum ?? minimumMarkerRadius(entity.kind);
+    entityRadiusMeters(entity) /
 
-  return clamp(Math.max(physical, markerMinimum), markerMinimum, 1e9);
+    positiveFinite(metersPerSceneUnit, 1);
+
+
+
+  const minimum = minimumMarkerRadius(entity);
+
+
+
+  return clamp(
+
+    Math.max(physical, minimum),
+
+    minimum,
+
+    100_000,
+
+  );
+
 }
 
-function entityDisplayColor(kind: EntityKind): Color {
-  switch (kind) {
-    case "star":
-      return new Color(0xffe3a6);
 
-    case "planet":
-      return new Color(0x5f9df7);
 
-    case "dwarf-planet":
-      return new Color(0x8ca7c7);
+function spatialMeters(spatial: SpatialPosition): Vec3 {
 
-    case "moon":
-      return new Color(0xbec6d1);
+  const multiplier = METERS_PER_UNIT[spatial.unit];
 
-    case "black-hole":
-      return new Color(0x171821);
 
-    case "neutron-star":
-      return new Color(0xdde8ff);
 
-    case "asteroid":
-      return new Color(0x9b8b78);
+  return [
 
-    case "comet":
-      return new Color(0xa8d8e8);
+    spatial.position[0] * multiplier,
 
-    case "satellite":
-      return new Color(0x83d9ff);
+    spatial.position[1] * multiplier,
 
-    case "spacecraft":
-      return new Color(0xf0d18a);
+    spatial.position[2] * multiplier,
 
-    case "debris":
-      return new Color(0xd99b61);
+  ];
 
-    case "nebula":
-      return new Color(0xb071c9);
-
-    case "star-cluster":
-      return new Color(0xe4d8ff);
-
-    case "galaxy":
-      return new Color(0x9dbfff);
-
-    case "galaxy-group":
-      return new Color(0x9b9bea);
-
-    case "galaxy-cluster":
-      return new Color(0xa78bfa);
-
-    case "cosmic-structure":
-      return new Color(0x7f8fb5);
-
-    case "surface-feature":
-      return new Color(0x8da87e);
-
-    case "building":
-      return new Color(0xc4c8ce);
-
-    case "city":
-      return new Color(0xffd37a);
-
-    case "country":
-      return new Color(0x91b8d9);
-  }
 }
+
+
 
 export interface RendererStats {
+
   drawCalls: number;
 
   triangles: number;
@@ -216,25 +633,23 @@ export interface RendererStats {
   visibleEntities: number;
 
   backend: string;
+
 }
 
+
+
 export const rendererInfo = {
+
   backend: "three",
 
   revision: REVISION,
+
 } as const;
 
-/*
- * Reference-frame integration
- *
- * The renderer never pretends that two unrelated reference
- * frames share one universal XYZ system.
- *
- * Same-frame positions work without a provider. Cross-frame
- * transforms require an explicit FrameTransformProvider.
- */
+
 
 export interface FrameTransformContext {
+
   entity: SpaceEntity;
 
   state: UniverseState;
@@ -246,80 +661,77 @@ export interface FrameTransformContext {
   sourceUnit: DistanceUnit;
 
   positionMeters: Vec3;
+
 }
+
+
 
 export interface FrameTransformProvider {
+
   transform(context: FrameTransformContext): Vec3 | null;
+
 }
 
-function spatialMeters(spatial: SpatialPosition): Vec3 {
-  const multiplier = METERS_PER_UNIT[spatial.unit];
 
-  return [
-    spatial.position[0] * multiplier,
-
-    spatial.position[1] * multiplier,
-
-    spatial.position[2] * multiplier,
-  ];
-}
-
-function sceneUnits(positionMeters: Vec3, metersPerSceneUnit: number): Vector3 {
-  const divisor = positiveFinite(metersPerSceneUnit, 1);
-
-  return new Vector3(
-    positionMeters[0] / divisor,
-
-    positionMeters[1] / divisor,
-
-    positionMeters[2] / divisor,
-  );
-}
 
 export class FrameSpace {
-  private transformProvider: FrameTransformProvider | null;
 
-  constructor(transformProvider: FrameTransformProvider | null = null) {
-    this.transformProvider = transformProvider;
+  private provider: FrameTransformProvider | null;
+
+
+
+  constructor(provider: FrameTransformProvider | null = null) {
+
+    this.provider = provider;
+
   }
+
+
 
   setTransformProvider(provider: FrameTransformProvider | null): void {
-    this.transformProvider = provider;
+
+    this.provider = provider;
+
   }
 
-  toVector3(position: Vec3 | Vector3): Vector3 {
-    if (position instanceof Vector3) {
-      return position.clone();
-    }
 
-    return new Vector3(position[0], position[1], position[2]);
-  }
 
-  toScene(positionMeters: Vec3, metersPerSceneUnit: number): Vector3 {
-    return sceneUnits(positionMeters, metersPerSceneUnit);
-  }
+  resolve(
 
-  resolve(entity: SpaceEntity, state: UniverseState): Vector3 | null {
+    entity: SpaceEntity,
+
+    state: UniverseState,
+
+  ): Vector3 | null {
+
     const spatial = entity.spatial;
 
+
+
     if (!spatial) {
+
       return null;
+
     }
 
-    const originalMeters = spatialMeters(spatial);
 
-    let targetMeters: Vec3;
 
-    if (spatial.frameId === state.scale.frameId) {
-      targetMeters = originalMeters;
-    } else {
-      const provider = this.transformProvider;
+    let meters = spatialMeters(spatial);
 
-      if (!provider) {
+
+
+    if (spatial.frameId !== state.scale.frameId) {
+
+      if (!this.provider) {
+
         return null;
+
       }
 
-      const transformed = provider.transform({
+
+
+      const transformed = this.provider.transform({
+
         entity,
 
         state,
@@ -330,472 +742,1324 @@ export class FrameSpace {
 
         sourceUnit: spatial.unit,
 
-        positionMeters: originalMeters,
+        positionMeters: meters,
+
       });
 
-      if (transformed === null) {
+
+
+      if (!transformed) {
+
         return null;
+
       }
 
-      targetMeters = transformed;
+
+
+      meters = transformed;
+
     }
 
-    if (!targetMeters.every((value) => Number.isFinite(value))) {
+
+
+    if (!meters.every((value) => Number.isFinite(value))) {
+
       return null;
+
     }
 
-    return sceneUnits(targetMeters, state.scale.metersPerUnit);
+
+
+    const divisor = positiveFinite(
+
+      state.scale.metersPerUnit,
+
+      1,
+
+    );
+
+
+
+    return new Vector3(
+
+      meters[0] / divisor,
+
+      meters[1] / divisor,
+
+      meters[2] / divisor,
+
+    );
+
   }
+
 }
 
-/*
- * Floating origin
- *
- * The scientific position remains absolute in its active
- * reference frame. Only the rendering copy is translated
- * near the origin to preserve GPU precision.
- */
+
 
 export class FloatingOrigin {
+
   private readonly value = new Vector3();
 
-  set(position: Vec3 | Vector3): void {
-    if (position instanceof Vector3) {
-      this.value.copy(position);
+
+
+  set(value: Vec3 | Vector3): void {
+
+    if (value instanceof Vector3) {
+
+      this.value.copy(value);
 
       return;
+
     }
 
-    this.value.set(position[0], position[1], position[2]);
+
+
+    this.value.set(
+
+      value[0],
+
+      value[1],
+
+      value[2],
+
+    );
+
   }
 
-  setFromState(state: UniverseState): void {
-    this.set(state.camera.position);
+
+
+  get origin(): Vector3 {
+
+    return this.value.clone();
+
   }
+
+
 
   toLocal(
+
     absolute: Vector3,
 
     target = new Vector3(),
+
   ): Vector3 {
-    return target.copy(absolute).sub(this.value);
+
+    return target
+
+      .copy(absolute)
+
+      .sub(this.value);
+
   }
 
-  toAbsolute(
-    local: Vector3,
-
-    target = new Vector3(),
-  ): Vector3 {
-    return target.copy(local).add(this.value);
-  }
-
-  get origin(): Vector3 {
-    return this.value.clone();
-  }
 }
 
-export type EntityMesh = Mesh<SphereGeometry, MeshBasicMaterial>;
 
-export interface EntitySceneEntry {
+
+function textureCanvas(): HTMLCanvasElement {
+
+  const canvas = document.createElement("canvas");
+
+
+
+  canvas.width = 1024;
+
+  canvas.height = 512;
+
+
+
+  return canvas;
+
+}
+
+
+
+function createRockTexture(
+
+  entity: SpaceEntity,
+
+  style: BodyVisualStyle,
+
+): CanvasTexture {
+
+  const canvas = textureCanvas();
+
+  const context = canvas.getContext("2d");
+
+
+
+  if (!context) {
+
+    throw new Error("2D canvas context unavailable.");
+
+  }
+
+
+
+  context.fillStyle = style.base;
+
+  context.fillRect(
+
+    0,
+
+    0,
+
+    canvas.width,
+
+    canvas.height,
+
+  );
+
+
+
+  const random = new SeededRandom(
+
+    hashString(entity.id),
+
+  );
+
+
+
+  for (let index = 0; index < 850; index++) {
+
+    const x = random.range(0, canvas.width);
+
+    const y = random.range(0, canvas.height);
+
+    const radius = random.range(1, 18);
+
+    const alpha = random.range(0.015, 0.12);
+
+
+
+    context.globalAlpha = alpha;
+
+
+
+    context.fillStyle =
+
+      random.next() > 0.52
+
+        ? style.secondary
+
+        : style.accent;
+
+
+
+    context.beginPath();
+
+
+
+    context.ellipse(
+
+      x,
+
+      y,
+
+      radius * random.range(0.6, 1.8),
+
+      radius,
+
+      random.range(0, Math.PI),
+
+      0,
+
+      Math.PI * 2,
+
+    );
+
+
+
+    context.fill();
+
+  }
+
+
+
+  context.globalAlpha = 1;
+
+
+
+  const texture = new CanvasTexture(canvas);
+
+
+
+  texture.colorSpace = SRGBColorSpace;
+
+  texture.wrapS = RepeatWrapping;
+
+  texture.needsUpdate = true;
+
+
+
+  return texture;
+
+}
+
+
+
+function createEarthTexture(
+
+  entity: SpaceEntity,
+
+  style: BodyVisualStyle,
+
+): CanvasTexture {
+
+  const canvas = textureCanvas();
+
+  const context = canvas.getContext("2d");
+
+
+
+  if (!context) {
+
+    throw new Error("2D canvas context unavailable.");
+
+  }
+
+
+
+  context.fillStyle = style.base;
+
+
+
+  context.fillRect(
+
+    0,
+
+    0,
+
+    canvas.width,
+
+    canvas.height,
+
+  );
+
+
+
+  const random = new SeededRandom(
+
+    hashString(entity.id),
+
+  );
+
+
+
+  for (let index = 0; index < 95; index++) {
+
+    const x = random.range(
+
+      -100,
+
+      canvas.width + 100,
+
+    );
+
+
+
+    const y = random.range(
+
+      35,
+
+      canvas.height - 35,
+
+    );
+
+
+
+    const radius = random.range(10, 65);
+
+
+
+    context.globalAlpha = random.range(
+
+      0.35,
+
+      0.88,
+
+    );
+
+
+
+    context.fillStyle =
+
+      random.next() > 0.35
+
+        ? style.secondary
+
+        : style.accent;
+
+
+
+    context.beginPath();
+
+
+
+    context.ellipse(
+
+      x,
+
+      y,
+
+      radius * random.range(1.2, 2.8),
+
+      radius * random.range(0.45, 1.1),
+
+      random.range(-0.8, 0.8),
+
+      0,
+
+      Math.PI * 2,
+
+    );
+
+
+
+    context.fill();
+
+  }
+
+
+
+  context.globalAlpha = 0.18;
+
+  context.fillStyle = "#ffffff";
+
+
+
+  for (let index = 0; index < 70; index++) {
+
+    const x = random.range(
+
+      0,
+
+      canvas.width,
+
+    );
+
+
+
+    const y = random.range(
+
+      0,
+
+      canvas.height,
+
+    );
+
+
+
+    context.beginPath();
+
+
+
+    context.ellipse(
+
+      x,
+
+      y,
+
+      random.range(18, 80),
+
+      random.range(2, 9),
+
+      random.range(-0.2, 0.2),
+
+      0,
+
+      Math.PI * 2,
+
+    );
+
+
+
+    context.fill();
+
+  }
+
+
+
+  context.globalAlpha = 1;
+
+
+
+  const texture = new CanvasTexture(canvas);
+
+
+
+  texture.colorSpace = SRGBColorSpace;
+
+  texture.wrapS = RepeatWrapping;
+
+  texture.needsUpdate = true;
+
+
+
+  return texture;
+
+}
+
+
+
+function createGasTexture(
+
+  entity: SpaceEntity,
+
+  style: BodyVisualStyle,
+
+): CanvasTexture {
+
+  const canvas = textureCanvas();
+
+  const context = canvas.getContext("2d");
+
+
+
+  if (!context) {
+
+    throw new Error("2D canvas context unavailable.");
+
+  }
+
+
+
+  const random = new SeededRandom(
+
+    hashString(entity.id),
+
+  );
+
+
+
+  context.fillStyle = style.base;
+
+
+
+  context.fillRect(
+
+    0,
+
+    0,
+
+    canvas.width,
+
+    canvas.height,
+
+  );
+
+
+
+  let y = 0;
+
+
+
+  while (y < canvas.height) {
+
+    const height = random.range(5, 27);
+
+
+
+    context.globalAlpha = random.range(
+
+      0.14,
+
+      0.72,
+
+    );
+
+
+
+    context.fillStyle =
+
+      random.next() > 0.5
+
+        ? style.secondary
+
+        : style.accent;
+
+
+
+    context.fillRect(
+
+      0,
+
+      y,
+
+      canvas.width,
+
+      height,
+
+    );
+
+
+
+    y += height;
+
+  }
+
+
+
+  if (entity.id === "jupiter") {
+
+    context.globalAlpha = 0.7;
+
+    context.fillStyle = "#b76447";
+
+
+
+    context.beginPath();
+
+
+
+    context.ellipse(
+
+      745,
+
+      315,
+
+      82,
+
+      29,
+
+      -0.08,
+
+      0,
+
+      Math.PI * 2,
+
+    );
+
+
+
+    context.fill();
+
+  }
+
+
+
+  context.globalAlpha = 1;
+
+
+
+  const texture = new CanvasTexture(canvas);
+
+
+
+  texture.colorSpace = SRGBColorSpace;
+
+  texture.wrapS = RepeatWrapping;
+
+  texture.needsUpdate = true;
+
+
+
+  return texture;
+
+}
+
+
+
+function createSunTexture(
+
+  entity: SpaceEntity,
+
+  style: BodyVisualStyle,
+
+): CanvasTexture {
+
+  const canvas = textureCanvas();
+
+  const context = canvas.getContext("2d");
+
+
+
+  if (!context) {
+
+    throw new Error("2D canvas context unavailable.");
+
+  }
+
+
+
+  context.fillStyle = style.base;
+
+
+
+  context.fillRect(
+
+    0,
+
+    0,
+
+    canvas.width,
+
+    canvas.height,
+
+  );
+
+
+
+  const random = new SeededRandom(
+
+    hashString(entity.id),
+
+  );
+
+
+
+  for (let index = 0; index < 1500; index++) {
+
+    context.globalAlpha = random.range(
+
+      0.02,
+
+      0.22,
+
+    );
+
+
+
+    context.fillStyle =
+
+      random.next() > 0.5
+
+        ? style.secondary
+
+        : style.accent;
+
+
+
+    const x = random.range(
+
+      0,
+
+      canvas.width,
+
+    );
+
+
+
+    const y = random.range(
+
+      0,
+
+      canvas.height,
+
+    );
+
+
+
+    const radius = random.range(2, 22);
+
+
+
+    context.beginPath();
+
+
+
+    context.arc(
+
+      x,
+
+      y,
+
+      radius,
+
+      0,
+
+      Math.PI * 2,
+
+    );
+
+
+
+    context.fill();
+
+  }
+
+
+
+  context.globalAlpha = 1;
+
+
+
+  const texture = new CanvasTexture(canvas);
+
+
+
+  texture.colorSpace = SRGBColorSpace;
+
+  texture.wrapS = RepeatWrapping;
+
+  texture.needsUpdate = true;
+
+
+
+  return texture;
+
+}
+
+
+
+function createEntityTexture(
+
+  entity: SpaceEntity,
+
+  style: BodyVisualStyle,
+
+): CanvasTexture {
+
+  switch (entity.id.toLowerCase()) {
+
+    case "earth":
+
+      return createEarthTexture(
+
+        entity,
+
+        style,
+
+      );
+
+
+
+    case "jupiter":
+
+    case "saturn":
+
+    case "uranus":
+
+    case "neptune":
+
+    case "venus":
+
+      return createGasTexture(
+
+        entity,
+
+        style,
+
+      );
+
+
+
+    case "sun":
+
+      return createSunTexture(
+
+        entity,
+
+        style,
+
+      );
+
+
+
+    default:
+
+      return createRockTexture(
+
+        entity,
+
+        style,
+
+      );
+
+  }
+
+}
+
+
+
+interface EntitySceneEntry {
+
   id: EntityId;
 
   entity: SpaceEntity;
 
-  object: EntityMesh;
+  root: Group;
+
+  body: Mesh;
 
   position: Vector3;
 
   radius: number;
+
+  pickables: Mesh[];
+
+  texture: CanvasTexture | null;
+
+  atmosphere: Mesh | null;
+
+  rings: Mesh | null;
+
+  label: HTMLDivElement | null;
+
 }
+
+
 
 export class EntitySceneIndex {
-  private readonly entriesValue = new Map<EntityId, EntitySceneEntry>();
+
+  private readonly entries =
+
+    new Map<EntityId, EntitySceneEntry>();
+
+
 
   get(id: EntityId): EntitySceneEntry | undefined {
-    return this.entriesValue.get(id);
+
+    return this.entries.get(id);
+
   }
 
-  set(id: EntityId, value: EntitySceneEntry): this {
-    if (value.id !== id) {
-      throw new Error("EntitySceneIndex id mismatch.");
-    }
 
-    this.entriesValue.set(id, value);
 
-    return this;
+  set(entry: EntitySceneEntry): void {
+
+    this.entries.set(
+
+      entry.id,
+
+      entry,
+
+    );
+
   }
 
-  has(id: EntityId): boolean {
-    return this.entriesValue.has(id);
-  }
+
 
   delete(id: EntityId): boolean {
-    return this.entriesValue.delete(id);
+
+    return this.entries.delete(id);
+
   }
+
+
 
   clear(): void {
-    this.entriesValue.clear();
+
+    this.entries.clear();
+
   }
 
-  getPosition(id: EntityId): Vector3 | undefined {
-    return this.entriesValue.get(id)?.position;
+
+
+  getPosition(
+
+    id: EntityId,
+
+  ): Vector3 | undefined {
+
+    return this.entries.get(id)?.position;
+
   }
 
-  getObject(id: EntityId): EntityMesh | undefined {
-    return this.entriesValue.get(id)?.object;
-  }
+
 
   values(): IterableIterator<EntitySceneEntry> {
-    return this.entriesValue.values();
+
+    return this.entries.values();
+
   }
+
+
 
   keys(): IterableIterator<EntityId> {
-    return this.entriesValue.keys();
+
+    return this.entries.keys();
+
   }
 
-  entriesIterator(): IterableIterator<[EntityId, EntitySceneEntry]> {
-    return this.entriesValue.entries();
-  }
+
 
   get size(): number {
-    return this.entriesValue.size;
+
+    return this.entries.size;
+
   }
+
 }
 
-/*
- * Real ray-cast picking.
- *
- * The old compatibility implementation always returned null.
- */
+
 
 export class PickingController {
+
   enabled = true;
 
-  private readonly raycaster = new Raycaster();
 
-  private readonly pointer = new Vector2();
 
-  private camera: PerspectiveCamera | null = null;
+  private readonly raycaster =
 
-  private canvas: HTMLCanvasElement | null = null;
+    new Raycaster();
 
-  private index: EntitySceneIndex | null = null;
 
-  constructor(
-    camera?: PerspectiveCamera,
 
-    canvas?: HTMLCanvasElement,
+  private readonly pointer =
 
-    index?: EntitySceneIndex,
-  ) {
-    this.raycaster.params.Points.threshold = 4;
+    new Vector2();
 
-    if (camera && canvas && index) {
-      this.configure(camera, canvas, index);
-    }
-  }
+
+
+  private camera:
+
+    PerspectiveCamera | null = null;
+
+
+
+  private canvas:
+
+    HTMLCanvasElement | null = null;
+
+
+
+  private index:
+
+    EntitySceneIndex | null = null;
+
+
 
   configure(
+
     camera: PerspectiveCamera,
 
     canvas: HTMLCanvasElement,
 
     index: EntitySceneIndex,
+
   ): void {
+
     this.camera = camera;
 
     this.canvas = canvas;
 
     this.index = index;
+
   }
 
-  setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
-  }
 
-  pick(clientX: number, clientY: number): EntityId | undefined {
-    if (!this.enabled || !this.camera || !this.canvas || !this.index) {
+
+  pick(
+
+    clientX: number,
+
+    clientY: number,
+
+  ): EntityId | undefined {
+
+    if (
+
+      !this.enabled ||
+
+      !this.camera ||
+
+      !this.canvas ||
+
+      !this.index
+
+    ) {
+
       return undefined;
+
     }
 
-    const rectangle = this.canvas.getBoundingClientRect();
 
-    if (rectangle.width <= 0 || rectangle.height <= 0) {
+
+    const bounds =
+
+      this.canvas.getBoundingClientRect();
+
+
+
+    if (
+
+      bounds.width <= 0 ||
+
+      bounds.height <= 0
+
+    ) {
+
       return undefined;
+
     }
+
+
 
     this.pointer.set(
-      ((clientX - rectangle.left) / rectangle.width) * 2 - 1,
 
-      -((clientY - rectangle.top) / rectangle.height) * 2 + 1,
+      ((clientX - bounds.left) /
+
+        bounds.width) *
+
+        2 -
+
+        1,
+
+
+
+      -(
+
+        ((clientY - bounds.top) /
+
+          bounds.height) *
+
+          2 -
+
+          1
+
+      ),
+
     );
 
-    this.raycaster.setFromCamera(this.pointer, this.camera);
 
-    const targets: EntityMesh[] = [];
+
+    this.raycaster.setFromCamera(
+
+      this.pointer,
+
+      this.camera,
+
+    );
+
+
+
+    const meshes: Mesh[] = [];
+
+
 
     for (const entry of this.index.values()) {
-      if (entry.object.visible) {
-        targets.push(entry.object);
-      }
+
+      meshes.push(
+
+        ...entry.pickables,
+
+      );
+
     }
 
-    const hits = this.raycaster.intersectObjects(targets, false);
+
+
+    const hits =
+
+      this.raycaster.intersectObjects(
+
+        meshes,
+
+        false,
+
+      );
+
+
 
     for (const hit of hits) {
-      const id = hit.object.userData["entityId"];
+
+      const id =
+
+        hit.object.userData[
+
+          "entityId"
+
+        ];
+
+
 
       if (typeof id === "string") {
+
         return id;
+
       }
+
     }
 
+
+
     return undefined;
+
   }
 
-  clear(): void {
-    this.pointer.set(0, 0);
-  }
+
 
   dispose(): void {
-    this.clear();
 
     this.camera = null;
 
     this.canvas = null;
 
     this.index = null;
+
   }
+
 }
 
-/*
- * GPU packed point layer.
- *
- * Used for dense catalogs such as stars, orbital debris and
- * galaxy fields. This uses one draw object instead of one
- * Three.js object per catalog entry.
- */
+
 
 export class PackedPointLayer {
-  readonly geometry = new BufferGeometry();
+
+  readonly geometry =
+
+    new BufferGeometry();
+
+
 
   readonly material: PointsMaterial;
 
-  readonly object: Points<BufferGeometry, PointsMaterial>;
 
-  private countValue = 0;
 
-  private densityValue = 1;
+  readonly object:
 
-  private requestedVisible = true;
+    Points<
 
-  private readonly capacity: number;
+      BufferGeometry,
 
-  constructor(
-    capacity = 100_000,
+      PointsMaterial
 
-    size = 1,
+    >;
 
-    color = 0xffffff,
-  ) {
-    this.capacity = Math.max(1, Math.floor(capacity));
 
-    this.material = new PointsMaterial({
-      color,
 
-      size: positiveFinite(size, 1),
+  constructor(size = 1) {
 
-      sizeAttenuation: true,
+    this.material =
 
-      transparent: true,
+      new PointsMaterial({
 
-      opacity: 1,
+        color: 0xffffff,
 
-      depthWrite: false,
+        size,
 
-      blending: AdditiveBlending,
-    });
+        sizeAttenuation: false,
 
-    this.object = new Points(this.geometry, this.material);
+        transparent: true,
 
-    this.object.name = "packed-point-layer";
+        opacity: 0.8,
 
-    this.object.frustumCulled = true;
+        depthWrite: false,
 
-    this.replace(new Float32Array());
+      });
+
+
+
+    this.object =
+
+      new Points(
+
+        this.geometry,
+
+        this.material,
+
+      );
+
   }
 
-  get root(): Points<BufferGeometry, PointsMaterial> {
-    return this.object;
-  }
 
-  get count(): number {
-    return this.countValue;
-  }
 
-  private updateDrawRange(): void {
-    const visibleCount = Math.floor(this.countValue * this.densityValue);
+  replace(
 
-    this.geometry.setDrawRange(0, visibleCount);
+    positions: Float32Array,
 
-    this.object.visible = this.requestedVisible && visibleCount > 0;
-  }
+  ): void {
 
-  private buildBuffer(positions: readonly Vec3[] | Float32Array): Float32Array {
-    const sourceCount =
-      positions instanceof Float32Array
-        ? Math.floor(positions.length / 3)
-        : positions.length;
+    const previous =
 
-    const maximum = Math.min(this.capacity, sourceCount);
+      this.geometry.getAttribute(
 
-    const data = new Float32Array(maximum * 3);
+        "position",
 
-    let written = 0;
+      );
 
-    for (
-      let index = 0;
-      index < sourceCount && written < this.capacity;
-      index++
-    ) {
-      let x: number | undefined;
 
-      let y: number | undefined;
 
-      let z: number | undefined;
+    this.geometry.setAttribute(
 
-      if (positions instanceof Float32Array) {
-        const offset = index * 3;
+      "position",
 
-        x = positions[offset];
+      new BufferAttribute(
 
-        y = positions[offset + 1];
+        positions,
 
-        z = positions[offset + 2];
-      } else {
-        const point = positions[index];
+        3,
 
-        if (!point) {
-          continue;
-        }
+      ),
 
-        x = point[0];
+    );
 
-        y = point[1];
 
-        z = point[2];
-      }
 
-      if (
-        x === undefined ||
-        y === undefined ||
-        z === undefined ||
-        !Number.isFinite(x) ||
-        !Number.isFinite(y) ||
-        !Number.isFinite(z)
-      ) {
-        continue;
-      }
+    if (previous) {
 
-      const target = written * 3;
+      previous.needsUpdate = false;
 
-      data[target] = x;
-
-      data[target + 1] = y;
-
-      data[target + 2] = z;
-
-      written++;
     }
 
-    if (written === maximum) {
-      return data;
-    }
 
-    return data.slice(0, written * 3);
+
+    this.geometry.computeBoundingSphere();
+
   }
 
-  replace(positions: readonly Vec3[] | Float32Array): void {
-    const data = this.buildBuffer(positions);
 
-    this.countValue = Math.floor(data.length / 3);
 
-    this.geometry.setAttribute("position", new BufferAttribute(data, 3));
+  setOpacity(
 
-    if (this.countValue > 0) {
-      this.geometry.computeBoundingSphere();
-    } else {
-      this.geometry.boundingSphere = null;
-    }
+    value: number,
 
-    this.updateDrawRange();
+  ): void {
+
+    this.material.opacity =
+
+      clamp(value, 0, 1);
+
   }
 
-  setPoints(positions: readonly Vec3[] | Float32Array): void {
-    this.replace(positions);
-  }
 
-  update(positions: readonly Vec3[] | Float32Array): void {
-    this.replace(positions);
-  }
-
-  setDensity(value: number): void {
-    this.densityValue = clamp(value, 0, 1);
-
-    this.updateDrawRange();
-  }
-
-  setVisible(visible: boolean): void {
-    this.requestedVisible = visible;
-
-    this.updateDrawRange();
-  }
-
-  setOpacity(value: number): void {
-    this.material.opacity = clamp(value, 0, 1);
-
-    this.material.transparent = this.material.opacity < 1;
-  }
-
-  setSize(value: number): void {
-    this.material.size = positiveFinite(value, 1);
-  }
-
-  setColor(value: number): void {
-    this.material.color.setHex(value);
-  }
-
-  clear(): void {
-    this.replace(new Float32Array());
-  }
 
   dispose(): void {
+
     this.object.removeFromParent();
 
     this.geometry.dispose();
 
     this.material.dispose();
+
   }
+
 }
 
-interface OrbitSceneEntry {
-  line: LineLoop<BufferGeometry, LineBasicMaterial>;
+
+
+interface OrbitEntry {
+
+  line: LineLoop;
 
   signature: string;
+
 }
 
+
+
 function orbitSignature(
+
   entity: SpaceEntity,
+
   metersPerUnit: number,
-  samples: number,
+
 ): string {
+
   const orbit = entity.orbit;
 
+
+
   if (!orbit) {
+
     return "";
+
   }
 
+
+
   return [
+
     orbit.semiMajorAxisM ?? "",
 
     orbit.eccentricity ?? "",
@@ -808,99 +2072,490 @@ function orbitSignature(
 
     metersPerUnit,
 
-    samples,
   ].join(":");
+
 }
 
+
+
 function createOrbitGeometry(
+
   entity: SpaceEntity,
+
   metersPerUnit: number,
-  samples: number,
+
 ): BufferGeometry | null {
+
   const orbit = entity.orbit;
 
-  const semiMajorMeters = orbit?.semiMajorAxisM;
+
+
+  const semiMajorMeters =
+
+    orbit?.semiMajorAxisM;
+
+
 
   if (
+
     orbit === undefined ||
+
     semiMajorMeters === undefined ||
-    !Number.isFinite(semiMajorMeters) ||
+
+    !Number.isFinite(
+
+      semiMajorMeters,
+
+    ) ||
+
     semiMajorMeters <= 0
+
   ) {
+
     return null;
+
   }
 
-  const divisor = positiveFinite(metersPerUnit, 1);
 
-  const semiMajor = semiMajorMeters / divisor;
 
-  if (!Number.isFinite(semiMajor) || semiMajor <= 0) {
-    return null;
-  }
+  const semiMajor =
 
-  const eccentricity = clamp(orbit.eccentricity ?? 0, 0, 0.999999);
+    semiMajorMeters /
+
+    positiveFinite(
+
+      metersPerUnit,
+
+      1,
+
+    );
+
+
+
+  const eccentricity = clamp(
+
+    orbit.eccentricity ?? 0,
+
+    0,
+
+    0.999999,
+
+  );
+
+
 
   const semiMinor =
-    semiMajor * Math.sqrt(Math.max(0, 1 - eccentricity * eccentricity));
 
-  const inclination = degreesToRadians(orbit.inclinationDeg);
+    semiMajor *
 
-  const ascendingNode = degreesToRadians(orbit.longitudeAscendingNodeDeg);
+    Math.sqrt(
 
-  const periapsis = degreesToRadians(orbit.argumentPeriapsisDeg);
+      1 -
 
-  const cosI = Math.cos(inclination);
+        eccentricity *
 
-  const sinI = Math.sin(inclination);
+          eccentricity,
 
-  const cosNode = Math.cos(ascendingNode);
+    );
 
-  const sinNode = Math.sin(ascendingNode);
 
-  const cosPeriapsis = Math.cos(periapsis);
 
-  const sinPeriapsis = Math.sin(periapsis);
+  const inclination =
 
-  const count = Math.max(24, Math.floor(samples));
+    degreesToRadians(
 
-  const positions = new Float32Array(count * 3);
+      orbit.inclinationDeg,
 
-  for (let index = 0; index < count; index++) {
-    const eccentricAnomaly = (index / count) * Math.PI * 2;
+    );
 
-    const orbitalX = semiMajor * (Math.cos(eccentricAnomaly) - eccentricity);
 
-    const orbitalY = semiMinor * Math.sin(eccentricAnomaly);
 
-    const periapsisX = cosPeriapsis * orbitalX - sinPeriapsis * orbitalY;
+  const node =
 
-    const periapsisY = sinPeriapsis * orbitalX + cosPeriapsis * orbitalY;
+    degreesToRadians(
 
-    const x = cosNode * periapsisX - sinNode * cosI * periapsisY;
+      orbit.longitudeAscendingNodeDeg,
 
-    const y = sinNode * periapsisX + cosNode * cosI * periapsisY;
+    );
 
-    const z = sinI * periapsisY;
 
-    const offset = index * 3;
+
+  const periapsis =
+
+    degreesToRadians(
+
+      orbit.argumentPeriapsisDeg,
+
+    );
+
+
+
+  const samples = 180;
+
+
+
+  const positions =
+
+    new Float32Array(
+
+      samples * 3,
+
+    );
+
+
+
+  for (
+
+    let index = 0;
+
+    index < samples;
+
+    index++
+
+  ) {
+
+    const angle =
+
+      (index / samples) *
+
+      Math.PI *
+
+      2;
+
+
+
+    const orbitalX =
+
+      semiMajor *
+
+      (Math.cos(angle) -
+
+        eccentricity);
+
+
+
+    const orbitalY =
+
+      semiMinor *
+
+      Math.sin(angle);
+
+
+
+    const pX =
+
+      Math.cos(periapsis) *
+
+        orbitalX -
+
+      Math.sin(periapsis) *
+
+        orbitalY;
+
+
+
+    const pY =
+
+      Math.sin(periapsis) *
+
+        orbitalX +
+
+      Math.cos(periapsis) *
+
+        orbitalY;
+
+
+
+    const x =
+
+      Math.cos(node) *
+
+        pX -
+
+      Math.sin(node) *
+
+        Math.cos(inclination) *
+
+        pY;
+
+
+
+    const y =
+
+      Math.sin(node) *
+
+        pX +
+
+      Math.cos(node) *
+
+        Math.cos(inclination) *
+
+        pY;
+
+
+
+    const z =
+
+      Math.sin(inclination) *
+
+      pY;
+
+
+
+    const offset =
+
+      index * 3;
+
+
 
     positions[offset] = x;
 
     positions[offset + 1] = y;
 
     positions[offset + 2] = z;
+
   }
 
-  const geometry = new BufferGeometry();
 
-  geometry.setAttribute("position", new BufferAttribute(positions, 3));
 
-  geometry.computeBoundingSphere();
+  const geometry =
+
+    new BufferGeometry();
+
+
+
+  geometry.setAttribute(
+
+    "position",
+
+    new BufferAttribute(
+
+      positions,
+
+      3,
+
+    ),
+
+  );
+
+
 
   return geometry;
+
 }
 
+
+
+function createStarfield(
+
+  count: number,
+
+): Points {
+
+  const positions =
+
+    new Float32Array(
+
+      count * 3,
+
+    );
+
+
+
+  const random =
+
+    new SeededRandom(
+
+      0x51a2cc91,
+
+    );
+
+
+
+  for (
+
+    let index = 0;
+
+    index < count;
+
+    index++
+
+  ) {
+
+    const radius =
+
+      random.range(
+
+        650,
+
+        2_200,
+
+      );
+
+
+
+    const theta =
+
+      random.range(
+
+        0,
+
+        Math.PI * 2,
+
+      );
+
+
+
+    const u =
+
+      random.range(-1, 1);
+
+
+
+    const planar =
+
+      Math.sqrt(
+
+        1 - u * u,
+
+      );
+
+
+
+    const offset =
+
+      index * 3;
+
+
+
+    positions[offset] =
+
+      radius *
+
+      planar *
+
+      Math.cos(theta);
+
+
+
+    positions[offset + 1] =
+
+      radius *
+
+      planar *
+
+      Math.sin(theta);
+
+
+
+    positions[offset + 2] =
+
+      radius * u;
+
+  }
+
+
+
+  const geometry =
+
+    new BufferGeometry();
+
+
+
+  geometry.setAttribute(
+
+    "position",
+
+    new BufferAttribute(
+
+      positions,
+
+      3,
+
+    ),
+
+  );
+
+
+
+  const material =
+
+    new PointsMaterial({
+
+      color: 0xdceaff,
+
+      size: 1.25,
+
+      sizeAttenuation: false,
+
+      transparent: true,
+
+      opacity: 0.68,
+
+      depthWrite: false,
+
+    });
+
+
+
+  const points =
+
+    new Points(
+
+      geometry,
+
+      material,
+
+    );
+
+
+
+  points.name =
+
+    "background-starfield";
+
+
+
+  points.frustumCulled = false;
+
+
+
+  return points;
+
+}
+
+
+
+function disposeMaterial(
+
+  material: Material | Material[],
+
+): void {
+
+  if (Array.isArray(material)) {
+
+    for (const item of material) {
+
+      item.dispose();
+
+    }
+
+
+
+    return;
+
+  }
+
+
+
+  material.dispose();
+
+}
+
+
+
 export interface ThreeUniverseRendererOptions {
+
   background?: number;
 
   antialias?: boolean;
@@ -909,24 +2564,29 @@ export interface ThreeUniverseRendererOptions {
 
   detailedObjectLimit?: number;
 
+  starCount?: number;
+
   frameTransformProvider?: FrameTransformProvider;
 
-  extensions?: UniverseRendererExtensionOptions;
 }
 
-/*
- * Concrete renderer.
- *
- * This replaces the former no-op compatibility implementation.
- */
 
-export class ThreeUniverseRenderer implements UniverseRenderer {
-  readonly name = "Three.js Universe Renderer";
 
-  readonly rendererInfo = rendererInfo;
+export class ThreeUniverseRenderer
+
+  implements UniverseRenderer
+
+{
+
+  readonly name =
+
+    "UNIVERSE Cinematic Three Renderer";
+
+
 
   readonly stats: RendererStats = {
-    backend: rendererInfo.backend,
+
+    backend: "three",
 
     drawCalls: 0,
 
@@ -943,27 +2603,112 @@ export class ThreeUniverseRenderer implements UniverseRenderer {
     frameMs: 0,
 
     visibleEntities: 0,
+
   };
+
+
 
   readonly frameSpace: FrameSpace;
 
-  readonly floatingOrigin = new FloatingOrigin();
 
-  readonly index = new EntitySceneIndex();
 
-  readonly worldRoot = new Group();
+  readonly index =
 
-  readonly entityRoot = new Group();
+    new EntitySceneIndex();
 
-  readonly orbitRoot = new Group();
 
-  readonly extensions: UniverseRendererExtensions;
 
-  private readonly orbitEntries = new Map<EntityId, OrbitSceneEntry>();
+  readonly picking =
 
-  private readonly unitSphere = new SphereGeometry(1, 24, 16);
+    new PickingController();
 
-  private readonly detailedObjectLimit: number;
+
+
+  readonly worldRoot =
+
+    new Group();
+
+
+
+  readonly entityRoot =
+
+    new Group();
+
+
+
+  readonly orbitRoot =
+
+    new Group();
+
+
+
+  private readonly orbitEntries =
+
+    new Map<EntityId, OrbitEntry>();
+
+
+
+  private readonly sphere =
+
+    new SphereGeometry(
+
+      1,
+
+      64,
+
+      40,
+
+    );
+
+
+
+  private rendererValue:
+
+    WebGLRenderer | null = null;
+
+
+
+  private cameraValue:
+
+    PerspectiveCamera | null = null;
+
+
+
+  private sceneValue:
+
+    Scene | null = null;
+
+
+
+  private starfield:
+
+    Points | null = null;
+
+
+
+  private ambientLight:
+
+    AmbientLight | null = null;
+
+
+
+  private sunLight:
+
+    PointLight | null = null;
+
+
+
+  private labelLayer:
+
+    HTMLDivElement | null = null;
+
+
+
+  private container:
+
+    HTMLElement | null = null;
+
+
 
   private readonly background: number;
 
@@ -971,4286 +2716,2948 @@ export class ThreeUniverseRenderer implements UniverseRenderer {
 
   private readonly alpha: boolean;
 
-  private rendererValue: WebGLRenderer | null = null;
+  private readonly objectLimit: number;
 
-  private cameraValue: PerspectiveCamera | null = null;
+  private readonly starCount: number;
 
-  private sceneValue: Scene | null = null;
 
-  private pickingValue: PickingController | null = null;
 
-  private containerValue: HTMLElement | null = null;
+  constructor(
 
-  private width = 1;
+    options: ThreeUniverseRendererOptions = {},
 
-  private height = 1;
+  ) {
 
-  private lastVisibleCount = -1;
+    this.background =
 
-  constructor(options: ThreeUniverseRendererOptions = {}) {
-    this.background = options.background ?? 0x01030a;
+      options.background ??
 
-    this.antialias = options.antialias ?? true;
+      0x071a36;
 
-    this.alpha = options.alpha ?? false;
 
-    this.detailedObjectLimit = Math.max(
-      100,
-      Math.floor(options.detailedObjectLimit ?? 10_000),
+
+    this.antialias =
+
+      options.antialias ??
+
+      true;
+
+
+
+    this.alpha =
+
+      options.alpha ??
+
+      false;
+
+
+
+    this.objectLimit =
+
+      Math.max(
+
+        100,
+
+        Math.floor(
+
+          options.detailedObjectLimit ??
+
+            20_000,
+
+        ),
+
+      );
+
+
+
+    this.starCount =
+
+      Math.max(
+
+        500,
+
+        Math.floor(
+
+          options.starCount ??
+
+            4_000,
+
+        ),
+
+      );
+
+
+
+    this.frameSpace =
+
+      new FrameSpace(
+
+        options.frameTransformProvider ??
+
+          null,
+
+      );
+
+
+
+    this.worldRoot.name =
+
+      "universe-world";
+
+
+
+    this.entityRoot.name =
+
+      "universe-entities";
+
+
+
+    this.orbitRoot.name =
+
+      "universe-orbits";
+
+
+
+    this.worldRoot.add(
+
+      this.orbitRoot,
+
     );
 
-    this.frameSpace = new FrameSpace(options.frameTransformProvider ?? null);
 
-    this.extensions = new UniverseRendererExtensions(options.extensions);
 
-    this.worldRoot.name = "universe-world";
+    this.worldRoot.add(
 
-    this.entityRoot.name = "universe-entities";
+      this.entityRoot,
 
-    this.orbitRoot.name = "universe-orbits";
+    );
 
-    this.worldRoot.add(this.orbitRoot);
-
-    this.worldRoot.add(this.entityRoot);
   }
 
-  async initialize(container: HTMLElement): Promise<void> {
+
+
+  async initialize(
+
+    container: HTMLElement,
+
+  ): Promise<void> {
+
     if (this.rendererValue) {
-      throw new Error("ThreeUniverseRenderer is already initialized.");
+
+      throw new Error(
+
+        "Renderer already initialized.",
+
+      );
+
     }
 
-    this.containerValue = container;
 
-    if (typeof window !== "undefined") {
-      const style = window.getComputedStyle(container);
 
-      if (style.position === "static") {
-        container.style.position = "relative";
-      }
-    }
+    this.container =
 
-    const renderer = new WebGLRenderer({
-      antialias: this.antialias,
+      container;
 
-      alpha: this.alpha,
 
-      logarithmicDepthBuffer: true,
 
-      powerPreference: "high-performance",
-    });
+    const style =
 
-    renderer.outputColorSpace = SRGBColorSpace;
+      window.getComputedStyle(
 
-    renderer.domElement.classList.add("universe-three-canvas");
+        container,
 
-    Object.assign(renderer.domElement.style, {
-      display: "block",
+      );
 
-      width: "100%",
 
-      height: "100%",
-
-      outline: "none",
-
-      touchAction: "none",
-    });
-
-    const scene = new Scene();
-
-    if (!this.alpha) {
-      scene.background = new Color(this.background);
-    }
-
-    const camera = new PerspectiveCamera(60, 1, 1e-7, 1e12);
-
-    camera.position.set(0, 0, 0);
-
-    scene.add(this.worldRoot);
-
-    container.appendChild(renderer.domElement);
-
-    const picking = new PickingController(
-      camera,
-      renderer.domElement,
-      this.index,
-    );
-
-    this.rendererValue = renderer;
-
-    this.sceneValue = scene;
-
-    this.cameraValue = camera;
-
-    this.pickingValue = picking;
-
-    this.extensions.initialize(
-      container,
-      renderer,
-      camera,
-      this.worldRoot,
-      this.index,
-      picking,
-    );
-
-    await this.extensions.plugins.activateAll();
-
-    const initialWidth = Math.max(1, container.clientWidth || 1);
-
-    const initialHeight = Math.max(1, container.clientHeight || 1);
-
-    const initialRatio =
-      typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-
-    this.resize(initialWidth, initialHeight, initialRatio);
-  }
-
-  private requireRenderer(): WebGLRenderer {
-    const renderer = this.rendererValue;
-
-    if (!renderer) {
-      throw new Error("ThreeUniverseRenderer has not been initialized.");
-    }
-
-    return renderer;
-  }
-
-  private requireScene(): Scene {
-    const scene = this.sceneValue;
-
-    if (!scene) {
-      throw new Error("ThreeUniverseRenderer has not been initialized.");
-    }
-
-    return scene;
-  }
-
-  private requireCamera(): PerspectiveCamera {
-    const camera = this.cameraValue;
-
-    if (!camera) {
-      throw new Error("ThreeUniverseRenderer has not been initialized.");
-    }
-
-    return camera;
-  }
-
-  private buildDesiredEntityIds(frame: RenderFrame): Set<EntityId> {
-    const result = new Set<EntityId>();
-
-    const state = frame.state;
-
-    if (state.focusId !== undefined && state.entities.has(state.focusId)) {
-      result.add(state.focusId);
-    }
 
     if (
-      state.selectedId !== undefined &&
-      state.entities.has(state.selectedId)
+
+      style.position === "static"
+
     ) {
-      result.add(state.selectedId);
+
+      container.style.position =
+
+        "relative";
+
     }
 
-    for (const id of frame.visibleEntityIds) {
-      if (result.size >= this.detailedObjectLimit) {
+
+
+    const renderer =
+
+      new WebGLRenderer({
+
+        antialias:
+
+          this.antialias,
+
+
+
+        alpha: this.alpha,
+
+
+
+        logarithmicDepthBuffer:
+
+          true,
+
+
+
+        powerPreference:
+
+          "high-performance",
+
+      });
+
+
+
+    renderer.outputColorSpace =
+
+      SRGBColorSpace;
+
+
+
+    renderer.domElement.style.display =
+
+      "block";
+
+
+
+    renderer.domElement.style.width =
+
+      "100%";
+
+
+
+    renderer.domElement.style.height =
+
+      "100%";
+
+
+
+    renderer.domElement.style.touchAction =
+
+      "none";
+
+
+
+    renderer.domElement.style.outline =
+
+      "none";
+
+
+
+    const scene =
+
+      new Scene();
+
+
+
+    if (!this.alpha) {
+
+      scene.background =
+
+        new Color(
+
+          this.background,
+
+        );
+
+    }
+
+
+
+    const camera =
+
+      new PerspectiveCamera(
+
+        52,
+
+        1,
+
+        0.001,
+
+        10_000,
+
+      );
+
+
+
+    camera.position.set(
+
+      40,
+
+      24,
+
+      70,
+
+    );
+
+
+
+    const starfield =
+
+      createStarfield(
+
+        this.starCount,
+
+      );
+
+
+
+    scene.add(starfield);
+
+
+
+    const ambient =
+
+      new AmbientLight(
+
+        0xa7c7ff,
+
+        0.43,
+
+      );
+
+
+
+    scene.add(ambient);
+
+
+
+    const sunLight =
+
+      new PointLight(
+
+        0xffd0a0,
+
+        5.2,
+
+        0,
+
+        0,
+
+      );
+
+
+
+    scene.add(sunLight);
+
+
+
+    scene.add(
+
+      this.worldRoot,
+
+    );
+
+
+
+    container.appendChild(
+
+      renderer.domElement,
+
+    );
+
+
+
+    const labelLayer =
+
+      document.createElement(
+
+        "div",
+
+      );
+
+
+
+    labelLayer.className =
+
+      "universe-render-label-layer";
+
+
+
+    Object.assign(
+
+      labelLayer.style,
+
+      {
+
+        position: "absolute",
+
+        inset: "0",
+
+        pointerEvents: "none",
+
+        overflow: "hidden",
+
+        zIndex: "5",
+
+      },
+
+    );
+
+
+
+    container.appendChild(
+
+      labelLayer,
+
+    );
+
+
+
+    this.rendererValue =
+
+      renderer;
+
+
+
+    this.cameraValue =
+
+      camera;
+
+
+
+    this.sceneValue =
+
+      scene;
+
+
+
+    this.starfield =
+
+      starfield;
+
+
+
+    this.ambientLight =
+
+      ambient;
+
+
+
+    this.sunLight =
+
+      sunLight;
+
+
+
+    this.labelLayer =
+
+      labelLayer;
+
+
+
+    this.picking.configure(
+
+      camera,
+
+      renderer.domElement,
+
+      this.index,
+
+    );
+
+
+
+    this.resize(
+
+      Math.max(
+
+        1,
+
+        container.clientWidth,
+
+      ),
+
+
+
+      Math.max(
+
+        1,
+
+        container.clientHeight,
+
+      ),
+
+
+
+      window.devicePixelRatio ||
+
+        1,
+
+    );
+
+  }
+
+
+
+  private requireRenderer():
+
+    WebGLRenderer {
+
+    if (!this.rendererValue) {
+
+      throw new Error(
+
+        "Renderer has not been initialized.",
+
+      );
+
+    }
+
+
+
+    return this.rendererValue;
+
+  }
+
+
+
+  private requireScene():
+
+    Scene {
+
+    if (!this.sceneValue) {
+
+      throw new Error(
+
+        "Renderer has not been initialized.",
+
+      );
+
+    }
+
+
+
+    return this.sceneValue;
+
+  }
+
+
+
+  private requireCamera():
+
+    PerspectiveCamera {
+
+    if (!this.cameraValue) {
+
+      throw new Error(
+
+        "Renderer has not been initialized.",
+
+      );
+
+    }
+
+
+
+    return this.cameraValue;
+
+  }
+
+
+
+  private desiredIds(
+
+    frame: RenderFrame,
+
+  ): Set<EntityId> {
+
+    const ids =
+
+      new Set<EntityId>();
+
+
+
+    const state =
+
+      frame.state;
+
+
+
+    if (
+
+      state.focusId &&
+
+      state.entities.has(
+
+        state.focusId,
+
+      )
+
+    ) {
+
+      ids.add(
+
+        state.focusId,
+
+      );
+
+    }
+
+
+
+    if (
+
+      state.selectedId &&
+
+      state.entities.has(
+
+        state.selectedId,
+
+      )
+
+    ) {
+
+      ids.add(
+
+        state.selectedId,
+
+      );
+
+    }
+
+
+
+    for (
+
+      const id of frame.visibleEntityIds
+
+    ) {
+
+      if (
+
+        ids.size >=
+
+        this.objectLimit
+
+      ) {
+
         break;
+
       }
 
-      if (state.entities.has(id)) {
-        result.add(id);
+
+
+      if (
+
+        state.entities.has(id)
+
+      ) {
+
+        ids.add(id);
+
       }
+
     }
 
-    return result;
+
+
+    return ids;
+
   }
 
-  private removeEntity(id: EntityId): void {
-    const entry = this.index.get(id);
 
-    if (!entry) {
+
+  private createAtmosphere(
+
+    entry: EntitySceneEntry,
+
+    style: BodyVisualStyle,
+
+  ): void {
+
+    if (
+
+      !style.atmosphere ||
+
+      style.atmosphereOpacity <= 0
+
+    ) {
+
       return;
+
     }
 
-    entry.object.removeFromParent();
 
-    entry.object.material.dispose();
 
-    this.index.delete(id);
+    const material =
+
+      new MeshBasicMaterial({
+
+        color:
+
+          style.atmosphere,
+
+
+
+        transparent: true,
+
+
+
+        opacity:
+
+          style.atmosphereOpacity,
+
+
+
+        side: BackSide,
+
+
+
+        depthWrite: false,
+
+
+
+        blending:
+
+          AdditiveBlending,
+
+      });
+
+
+
+    const atmosphere =
+
+      new Mesh(
+
+        this.sphere,
+
+        material,
+
+      );
+
+
+
+    atmosphere.scale.setScalar(
+
+      1.075,
+
+    );
+
+
+
+    entry.root.add(
+
+      atmosphere,
+
+    );
+
+
+
+    entry.atmosphere =
+
+      atmosphere;
+
   }
 
-  private createEntityEntry(
-    entity: SpaceEntity,
-    localPosition: Vector3,
-    radius: number,
-  ): EntitySceneEntry {
-    const style = resolvedEntityStyle(entity, this.extensions.themes.current);
 
-    const material = new MeshBasicMaterial({
-      color: style.color,
 
-      transparent: style.bodyOpacity < 0.999,
+  private createSaturnRings(
 
-      opacity: clamp(style.bodyOpacity, 0, 1),
+    entry: EntitySceneEntry,
 
-      depthWrite: style.bodyOpacity >= 0.999,
-    });
+  ): void {
 
-    if (entity.kind === "star") {
-      material.blending = AdditiveBlending;
+    if (
+
+      entry.entity.id !==
+
+      "saturn"
+
+    ) {
+
+      return;
+
     }
 
-    const object = new Mesh(this.unitSphere, material);
 
-    object.name = `entity:${entity.id}`;
 
-    object.userData["entityId"] = entity.id;
+    const geometry =
 
-    object.userData["entityKind"] = entity.kind;
+      new RingGeometry(
 
-    object.position.copy(localPosition);
+        1.35,
 
-    object.scale.setScalar(radius);
+        2.35,
 
-    this.entityRoot.add(object);
+        128,
 
-    const entry: EntitySceneEntry = {
+        4,
+
+      );
+
+
+
+    const material =
+
+      new MeshBasicMaterial({
+
+        color: 0xd7c39b,
+
+        transparent: true,
+
+        opacity: 0.55,
+
+        side: DoubleSide,
+
+        depthWrite: false,
+
+      });
+
+
+
+    const rings =
+
+      new Mesh(
+
+        geometry,
+
+        material,
+
+      );
+
+
+
+    rings.rotation.x =
+
+      0.46;
+
+
+
+    rings.rotation.y =
+
+      -0.18;
+
+
+
+    entry.root.add(rings);
+
+
+
+    entry.rings = rings;
+
+  }
+
+
+
+  private createSunGlow(
+
+    entry: EntitySceneEntry,
+
+  ): void {
+
+    if (
+
+      entry.entity.id !==
+
+      "sun"
+
+    ) {
+
+      return;
+
+    }
+
+
+
+    const inner =
+
+      new Mesh(
+
+        this.sphere,
+
+        new MeshBasicMaterial({
+
+          color: 0xffb85c,
+
+          transparent: true,
+
+          opacity: 0.16,
+
+          depthWrite: false,
+
+          blending:
+
+            AdditiveBlending,
+
+          side: BackSide,
+
+        }),
+
+      );
+
+
+
+    inner.scale.setScalar(
+
+      1.19,
+
+    );
+
+
+
+    entry.root.add(inner);
+
+
+
+    const outer =
+
+      new Mesh(
+
+        this.sphere,
+
+        new MeshBasicMaterial({
+
+          color: 0xff7b45,
+
+          transparent: true,
+
+          opacity: 0.07,
+
+          depthWrite: false,
+
+          blending:
+
+            AdditiveBlending,
+
+          side: BackSide,
+
+        }),
+
+      );
+
+
+
+    outer.scale.setScalar(
+
+      1.48,
+
+    );
+
+
+
+    entry.root.add(outer);
+
+  }
+
+
+
+  private createLabel(
+
+    entity: SpaceEntity,
+
+  ): HTMLDivElement | null {
+
+    const layer =
+
+      this.labelLayer;
+
+
+
+    if (!layer) {
+
+      return null;
+
+    }
+
+
+
+    const label =
+
+      document.createElement(
+
+        "div",
+
+      );
+
+
+
+    label.dataset[
+
+      "entityId"
+
+    ] = entity.id;
+
+
+
+    Object.assign(
+
+      label.style,
+
+      {
+
+        position: "absolute",
+
+
+
+        transform:
+
+          "translate(-50%, -50%)",
+
+
+
+        color: "#f4f7ff",
+
+
+
+        fontSize: "11px",
+
+
+
+        fontWeight: "600",
+
+
+
+        letterSpacing: "0.01em",
+
+
+
+        whiteSpace: "nowrap",
+
+
+
+        textShadow:
+
+          "0 2px 8px rgba(0, 10, 30, 0.9)",
+
+
+
+        opacity: "0",
+
+
+
+        transition:
+
+          "opacity 120ms ease",
+
+      },
+
+    );
+
+
+
+    label.textContent =
+
+      entity.name;
+
+
+
+    layer.appendChild(label);
+
+
+
+    return label;
+
+  }
+
+
+
+  private createEntry(
+
+    entity: SpaceEntity,
+
+    position: Vector3,
+
+    radius: number,
+
+  ): EntitySceneEntry {
+
+    const style =
+
+      styleForEntity(entity);
+
+
+
+    const texture =
+
+      createEntityTexture(
+
+        entity,
+
+        style,
+
+      );
+
+
+
+    let bodyMaterial: Material;
+
+
+
+    if (
+
+      entity.id === "sun"
+
+    ) {
+
+      bodyMaterial =
+
+        new MeshBasicMaterial({
+
+          map: texture,
+
+          color: style.base,
+
+        });
+
+    } else {
+
+      bodyMaterial =
+
+        new MeshStandardMaterial({
+
+          map: texture,
+
+          color: 0xffffff,
+
+          roughness:
+
+            style.roughness,
+
+          metalness: 0,
+
+          emissive:
+
+            new Color(
+
+              style.emissive,
+
+            ),
+
+          emissiveIntensity:
+
+            style.emissiveIntensity,
+
+        });
+
+    }
+
+
+
+    const body =
+
+      new Mesh(
+
+        this.sphere,
+
+        bodyMaterial,
+
+      );
+
+
+
+    body.userData[
+
+      "entityId"
+
+    ] = entity.id;
+
+
+
+    body.userData[
+
+      "entityKind"
+
+    ] = entity.kind;
+
+
+
+    const root =
+
+      new Group();
+
+
+
+    root.name =
+
+      `entity:${entity.id}`;
+
+
+
+    root.position.copy(
+
+      position,
+
+    );
+
+
+
+    root.scale.setScalar(
+
+      radius,
+
+    );
+
+
+
+    root.add(body);
+
+
+
+    const entry:
+
+      EntitySceneEntry = {
+
       id: entity.id,
 
       entity,
 
-      object,
+      root,
 
-      position: localPosition.clone(),
+      body,
+
+      position:
+
+        position.clone(),
 
       radius,
+
+      pickables: [body],
+
+      texture,
+
+      atmosphere: null,
+
+      rings: null,
+
+      label:
+
+        this.createLabel(
+
+          entity,
+
+        ),
+
     };
 
-    this.index.set(entity.id, entry);
+
+
+    this.createAtmosphere(
+
+      entry,
+
+      style,
+
+    );
+
+
+
+    this.createSaturnRings(
+
+      entry,
+
+    );
+
+
+
+    this.createSunGlow(
+
+      entry,
+
+    );
+
+
+
+    this.entityRoot.add(
+
+      root,
+
+    );
+
+
+
+    this.index.set(
+
+      entry,
+
+    );
+
+
 
     return entry;
+
   }
 
-  private updateEntityEntry(
-    entry: EntitySceneEntry,
-    entity: SpaceEntity,
-    localPosition: Vector3,
-    radius: number,
-    state: UniverseState,
+
+
+  private removeEntry(
+
+    id: EntityId,
+
   ): void {
-    entry.entity = entity;
 
-    entry.position.copy(localPosition);
+    const entry =
 
-    entry.radius = radius;
+      this.index.get(id);
 
-    entry.object.position.copy(localPosition);
 
-    const uiSelection = this.extensions.selection.getSnapshot();
-
-    const selected =
-      state.selectedId === entity.id || uiSelection.selectedId === entity.id;
-
-    const focused =
-      state.focusId === entity.id || uiSelection.focusedId === entity.id;
-
-    const scaleMultiplier = focused ? 1.3 : selected ? 1.15 : 1;
-
-    entry.object.scale.setScalar(radius * scaleMultiplier);
-
-    const theme = this.extensions.themes.current;
-
-    const style = resolvedEntityStyle(entity, theme);
-
-    let color = style.color;
-
-    if (selected) {
-      color = theme.selection;
-    }
-
-    if (focused) {
-      color = theme.focus;
-    }
-
-    entry.object.material.color.setHex(color);
-
-    entry.object.material.opacity = clamp(style.bodyOpacity, 0, 1);
-
-    entry.object.material.transparent = entry.object.material.opacity < 0.999;
-
-    entry.object.material.depthWrite = entry.object.material.opacity >= 0.999;
-
-    entry.object.material.blending =
-      entity.kind === "star" ? AdditiveBlending : NormalBlending;
-
-    entry.object.material.needsUpdate = true;
-
-    entry.object.userData["entityKind"] = entity.kind;
-
-    entry.object.userData["physicalRadiusMeters"] = entityRadiusMeters(entity);
-
-    entry.object.userData["renderRadius"] = radius;
-  }
-
-  private syncEntities(frame: RenderFrame): void {
-    const desired = this.buildDesiredEntityIds(frame);
-
-    for (const id of [...this.index.keys()]) {
-      if (!desired.has(id)) {
-        this.removeEntity(id);
-      }
-    }
-
-    const state = frame.state;
-
-    this.floatingOrigin.setFromState(state);
-
-    for (const id of desired) {
-      const entity = state.entities.get(id);
-
-      if (!entity) {
-        this.removeEntity(id);
-
-        continue;
-      }
-
-      const absolute = this.frameSpace.resolve(entity, state);
-
-      if (!absolute) {
-        this.removeEntity(id);
-
-        continue;
-      }
-
-      const local = this.floatingOrigin.toLocal(absolute);
-
-      const radius = entitySceneRadius(entity, state.scale.metersPerUnit);
-
-      let entry = this.index.get(id);
-
-      if (!entry) {
-        entry = this.createEntityEntry(entity, local, radius);
-      }
-
-      this.updateEntityEntry(entry, entity, local, radius, state);
-    }
-
-    if (this.lastVisibleCount !== this.index.size) {
-      this.lastVisibleCount = this.index.size;
-
-      this.extensions.events.emit("visibility.change", {
-        visibleCount: this.index.size,
-      });
-    }
-  }
-
-  private disposeOrbit(id: EntityId): void {
-    const entry = this.orbitEntries.get(id);
 
     if (!entry) {
+
       return;
+
     }
 
-    entry.line.removeFromParent();
+
+
+    entry.root.traverse(
+
+      (object) => {
+
+        if (
+
+          object instanceof Mesh
+
+        ) {
+
+          disposeMaterial(
+
+            object.material,
+
+          );
+
+
+
+          if (
+
+            object.geometry !==
+
+            this.sphere
+
+          ) {
+
+            object.geometry.dispose();
+
+          }
+
+        }
+
+      },
+
+    );
+
+
+
+    entry.texture?.dispose();
+
+
+
+    entry.label?.remove();
+
+
+
+    entry.root.removeFromParent();
+
+
+
+    this.index.delete(id);
+
+  }
+
+
+
+  private syncEntities(
+
+    frame: RenderFrame,
+
+  ): void {
+
+    const desired =
+
+      this.desiredIds(frame);
+
+
+
+    for (
+
+      const id of [
+
+        ...this.index.keys(),
+
+      ]
+
+    ) {
+
+      if (
+
+        !desired.has(id)
+
+      ) {
+
+        this.removeEntry(
+
+          id,
+
+        );
+
+      }
+
+    }
+
+
+
+    const state =
+
+      frame.state;
+
+
+
+    for (
+
+      const id of desired
+
+    ) {
+
+      const entity =
+
+        state.entities.get(id);
+
+
+
+      if (!entity) {
+
+        continue;
+
+      }
+
+
+
+      const position =
+
+        this.frameSpace.resolve(
+
+          entity,
+
+          state,
+
+        );
+
+
+
+      if (!position) {
+
+        this.removeEntry(
+
+          id,
+
+        );
+
+
+
+        continue;
+
+      }
+
+
+
+      const radius =
+
+        entitySceneRadius(
+
+          entity,
+
+          state.scale
+
+            .metersPerUnit,
+
+        );
+
+
+
+      let entry =
+
+        this.index.get(id);
+
+
+
+      if (!entry) {
+
+        entry =
+
+          this.createEntry(
+
+            entity,
+
+            position,
+
+            radius,
+
+          );
+
+      }
+
+
+
+      entry.entity =
+
+        entity;
+
+
+
+      entry.position.copy(
+
+        position,
+
+      );
+
+
+
+      entry.radius =
+
+        radius;
+
+
+
+      entry.root.position.copy(
+
+        position,
+
+      );
+
+
+
+      const selected =
+
+        state.selectedId ===
+
+        entity.id;
+
+
+
+      const focused =
+
+        state.focusId ===
+
+        entity.id;
+
+
+
+      const multiplier =
+
+        focused
+
+          ? 1.13
+
+          : selected
+
+            ? 1.075
+
+            : 1;
+
+
+
+      entry.root.scale.setScalar(
+
+        radius *
+
+          multiplier,
+
+      );
+
+
+
+      entry.body.rotation.y +=
+
+        frame.deltaSeconds *
+
+        (
+
+          entity.id ===
+
+          "jupiter"
+
+            ? 0.12
+
+            : 0.045
+
+        );
+
+    }
+
+
+
+    const sun =
+
+      this.index.get(
+
+        "sun",
+
+      );
+
+
+
+    if (
+
+      sun &&
+
+      this.sunLight
+
+    ) {
+
+      this.sunLight.position.copy(
+
+        sun.position,
+
+      );
+
+    }
+
+  }
+
+
+
+  private removeOrbit(
+
+    id: EntityId,
+
+  ): void {
+
+    const entry =
+
+      this.orbitEntries.get(
+
+        id,
+
+      );
+
+
+
+    if (!entry) {
+
+      return;
+
+    }
+
+
 
     entry.line.geometry.dispose();
 
-    entry.line.material.dispose();
 
-    this.orbitEntries.delete(id);
+
+    disposeMaterial(
+
+      entry.line.material,
+
+    );
+
+
+
+    entry.line.removeFromParent();
+
+
+
+    this.orbitEntries.delete(
+
+      id,
+
+    );
+
   }
 
-  private clearOrbits(): void {
-    for (const id of [...this.orbitEntries.keys()]) {
-      this.disposeOrbit(id);
-    }
-  }
 
-  private syncOrbits(frame: RenderFrame): void {
-    const state = frame.state;
 
-    const enabled = state.overlays.orbits && state.settings.graphics.orbitLines;
+  private syncOrbits(
 
-    if (!enabled) {
-      this.clearOrbits();
+    frame: RenderFrame,
 
-      return;
-    }
+  ): void {
 
-    const desired = new Set<EntityId>();
+    const state =
 
-    const quality = this.extensions.quality.profile;
+      frame.state;
 
-    const samples = Math.round(clamp(96 * quality.orbitDetail, 24, 192));
 
-    for (const entityEntry of this.index.values()) {
-      const entity = entityEntry.entity;
 
-      if (
-        !entity.parentId ||
-        !entity.orbit ||
-        entity.orbit.semiMajorAxisM === undefined
+    if (
+
+      !state.overlays.orbits ||
+
+      !state.settings.graphics
+
+        .orbitLines
+
+    ) {
+
+      for (
+
+        const id of [
+
+          ...this.orbitEntries.keys(),
+
+        ]
+
       ) {
-        continue;
-      }
 
-      const parentPosition = this.index.getPosition(entity.parentId);
+        this.removeOrbit(
 
-      if (!parentPosition) {
-        continue;
-      }
+          id,
 
-      const signature = orbitSignature(
-        entity,
-        state.scale.metersPerUnit,
-        samples,
-      );
-
-      let orbitEntry = this.orbitEntries.get(entity.id);
-
-      if (!orbitEntry || orbitEntry.signature !== signature) {
-        if (orbitEntry) {
-          this.disposeOrbit(entity.id);
-        }
-
-        const geometry = createOrbitGeometry(
-          entity,
-          state.scale.metersPerUnit,
-          samples,
         );
 
-        if (!geometry) {
-          continue;
+      }
+
+
+
+      return;
+
+    }
+
+
+
+    const desired =
+
+      new Set<EntityId>();
+
+
+
+    for (
+
+      const entityEntry of
+
+        this.index.values()
+
+    ) {
+
+      const entity =
+
+        entityEntry.entity;
+
+
+
+      if (
+
+        !entity.orbit ||
+
+        !entity.parentId
+
+      ) {
+
+        continue;
+
+      }
+
+
+
+      const parent =
+
+        this.index.getPosition(
+
+          entity.parentId,
+
+        );
+
+
+
+      if (!parent) {
+
+        continue;
+
+      }
+
+
+
+      const signature =
+
+        orbitSignature(
+
+          entity,
+
+          state.scale
+
+            .metersPerUnit,
+
+        );
+
+
+
+      let orbit =
+
+        this.orbitEntries.get(
+
+          entity.id,
+
+        );
+
+
+
+      if (
+
+        !orbit ||
+
+        orbit.signature !==
+
+          signature
+
+      ) {
+
+        if (orbit) {
+
+          this.removeOrbit(
+
+            entity.id,
+
+          );
+
         }
 
-        const material = new LineBasicMaterial({
-          color: this.extensions.themes.current.orbit,
 
-          transparent: true,
 
-          opacity: 0.38,
+        const geometry =
 
-          depthWrite: false,
-        });
+          createOrbitGeometry(
 
-        const line = new LineLoop(geometry, material);
+            entity,
 
-        line.name = `orbit:${entity.id}`;
+            state.scale
 
-        line.frustumCulled = true;
+              .metersPerUnit,
 
-        this.orbitRoot.add(line);
+          );
 
-        orbitEntry = {
+
+
+        if (!geometry) {
+
+          continue;
+
+        }
+
+
+
+        const selected =
+
+          state.selectedId ===
+
+            entity.id ||
+
+          state.focusId ===
+
+            entity.id;
+
+
+
+        const material =
+
+          new LineBasicMaterial({
+
+            color: selected
+
+              ? 0x9fe6ff
+
+              : 0x7795bd,
+
+
+
+            transparent: true,
+
+
+
+            opacity: selected
+
+              ? 0.42
+
+              : 0.105,
+
+
+
+            depthWrite: false,
+
+          });
+
+
+
+        const line =
+
+          new LineLoop(
+
+            geometry,
+
+            material,
+
+          );
+
+
+
+        line.name =
+
+          `orbit:${entity.id}`;
+
+
+
+        this.orbitRoot.add(
+
+          line,
+
+        );
+
+
+
+        orbit = {
+
           line,
 
           signature,
+
         };
 
-        this.orbitEntries.set(entity.id, orbitEntry);
+
+
+        this.orbitEntries.set(
+
+          entity.id,
+
+          orbit,
+
+        );
+
       }
 
-      orbitEntry.line.position.copy(parentPosition);
 
-      orbitEntry.line.material.color.setHex(
-        this.extensions.themes.current.orbit,
+
+      orbit.line.position.copy(
+
+        parent,
+
       );
 
-      desired.add(entity.id);
+
+
+      const material =
+
+        orbit.line.material;
+
+
+
+      if (
+
+        material instanceof
+
+        LineBasicMaterial
+
+      ) {
+
+        const active =
+
+          state.selectedId ===
+
+            entity.id ||
+
+          state.focusId ===
+
+            entity.id;
+
+
+
+        material.opacity =
+
+          active
+
+            ? 0.42
+
+            : 0.105;
+
+
+
+        material.color.setHex(
+
+          active
+
+            ? 0x9fe6ff
+
+            : 0x7795bd,
+
+        );
+
+      }
+
+
+
+      desired.add(
+
+        entity.id,
+
+      );
+
     }
 
-    for (const id of [...this.orbitEntries.keys()]) {
-      if (!desired.has(id)) {
-        this.disposeOrbit(id);
+
+
+    for (
+
+      const id of [
+
+        ...this.orbitEntries.keys(),
+
+      ]
+
+    ) {
+
+      if (
+
+        !desired.has(id)
+
+      ) {
+
+        this.removeOrbit(
+
+          id,
+
+        );
+
       }
+
     }
+
   }
 
-  private syncCamera(frame: RenderFrame): void {
-    const camera = this.requireCamera();
 
-    const state = frame.state;
 
-    camera.position.set(0, 0, 0);
+  private syncCamera(
 
-    const nextFov = clamp(state.camera.fieldOfView, 5, 140);
+    frame: RenderFrame,
 
-    if (camera.fov !== nextFov) {
-      camera.fov = nextFov;
+  ): void {
+
+    const camera =
+
+      this.requireCamera();
+
+
+
+    const state =
+
+      frame.state;
+
+
+
+    camera.position.set(
+
+      state.camera.position[0],
+
+      state.camera.position[1],
+
+      state.camera.position[2],
+
+    );
+
+
+
+    const fov =
+
+      clamp(
+
+        state.camera
+
+          .fieldOfView,
+
+        20,
+
+        95,
+
+      );
+
+
+
+    if (
+
+      camera.fov !== fov
+
+    ) {
+
+      camera.fov = fov;
 
       camera.updateProjectionMatrix();
+
     }
 
-    const targetId = state.camera.targetId ?? state.focusId;
 
-    if (targetId !== undefined) {
-      const target = this.index.getPosition(targetId);
-
-      if (target && target.lengthSq() > 1e-18) {
-        camera.lookAt(target);
-      }
-    }
-
-    const event: {
-      position: Vec3;
-
-      targetId?: EntityId;
-    } = {
-      position: [
-        state.camera.position[0],
-
-        state.camera.position[1],
-
-        state.camera.position[2],
-      ],
-    };
-
-    if (targetId !== undefined) {
-      event.targetId = targetId;
-    }
-
-    this.extensions.events.emit("camera.change", event);
-  }
-
-  private updateTheme(): void {
-    const scene = this.requireScene();
-
-    if (this.alpha) {
-      scene.background = null;
-
-      return;
-    }
-
-    const color = this.extensions.themes.current.background;
-
-    if (scene.background instanceof Color) {
-      scene.background.setHex(color);
-    } else {
-      scene.background = new Color(color);
-    }
-  }
-
-  private updateStats(frameMilliseconds: number): void {
-    const renderer = this.requireRenderer();
-
-    const render = renderer.info.render;
-
-    this.stats.drawCalls = render.calls;
-
-    this.stats.triangles = render.triangles;
-
-    this.stats.points = render.points;
-
-    this.stats.lines = render.lines;
-
-    this.stats.objects = this.index.size;
-
-    this.stats.sceneObjects =
-      this.index.size +
-      this.orbitEntries.size +
-      this.extensions.denseLayers.count +
-      3;
-
-    this.stats.frameMs = frameMilliseconds;
-
-    this.stats.visibleEntities = this.index.size;
-  }
-
-  render(frame: RenderFrame): void {
-    const renderer = this.requireRenderer();
-
-    const scene = this.requireScene();
-
-    const camera = this.requireCamera();
-
-    const started = performance.now();
-
-    this.extensions.beforeFrame(frame);
-
-    this.syncEntities(frame);
-
-    this.syncOrbits(frame);
-
-    this.syncCamera(frame);
-
-    this.updateTheme();
-
-    this.extensions.afterEntitySync();
-
-    this.extensions.syncLabels(frame);
-
-    renderer.render(scene, camera);
-
-    this.extensions.markRendered();
-
-    const frameMilliseconds = performance.now() - started;
-
-    this.updateStats(frameMilliseconds);
-
-    this.extensions.endFrame(frame, this.stats);
-  }
-
-  resize(width: number, height: number, pixelRatio: number): void {
-    this.width = Math.max(1, Math.floor(width));
-
-    this.height = Math.max(1, Math.floor(height));
-
-    const renderer = this.rendererValue;
-
-    const camera = this.cameraValue;
-
-    if (!renderer || !camera) {
-      return;
-    }
-
-    const qualityLimit = this.extensions.quality.profile.pixelRatioLimit;
-
-    const ratio = clamp(pixelRatio, 0.5, qualityLimit);
-
-    renderer.setPixelRatio(ratio);
-
-    renderer.setSize(this.width, this.height, false);
-
-    camera.aspect = this.width / this.height;
-
-    camera.updateProjectionMatrix();
-
-    this.extensions.resize(this.width, this.height, ratio);
-  }
-
-  setFrameTransformProvider(provider: FrameTransformProvider | null): void {
-    this.frameSpace.setTransformProvider(provider);
-  }
-
-  getStats(): RendererStats {
-    return {
-      ...this.stats,
-    };
-  }
-
-  get scene(): Scene | null {
-    return this.sceneValue;
-  }
-
-  get camera(): PerspectiveCamera | null {
-    return this.cameraValue;
-  }
-
-  get threeRenderer(): WebGLRenderer | null {
-    return this.rendererValue;
-  }
-
-  get picking(): PickingController | null {
-    return this.pickingValue;
-  }
-
-  private clearEntityObjects(): void {
-    for (const entry of this.index.values()) {
-      entry.object.removeFromParent();
-
-      entry.object.material.dispose();
-    }
-
-    this.index.clear();
-  }
-
-  dispose(): void {
-    this.extensions.dispose();
-
-    this.clearOrbits();
-
-    this.clearEntityObjects();
-
-    this.pickingValue?.dispose();
-
-    this.pickingValue = null;
-
-    this.unitSphere.dispose();
-
-    const renderer = this.rendererValue;
-
-    if (renderer) {
-      const canvas = renderer.domElement;
-
-      renderer.dispose();
-
-      canvas.remove();
-    }
-
-    this.sceneValue?.clear();
-
-    this.rendererValue = null;
-
-    this.cameraValue = null;
-
-    this.sceneValue = null;
-
-    this.containerValue = null;
-
-    this.lastVisibleCount = -1;
-
-    this.stats.drawCalls = 0;
-
-    this.stats.triangles = 0;
-
-    this.stats.points = 0;
-
-    this.stats.lines = 0;
-
-    this.stats.objects = 0;
-
-    this.stats.sceneObjects = 0;
-
-    this.stats.frameMs = 0;
-
-    this.stats.visibleEntities = 0;
-  }
-}
-
-// CHECKPOINT 1: renderer events and shared scene state
-
-export type RenderEventName =
-  | "entity.hover"
-  | "entity.leave"
-  | "entity.select"
-  | "entity.focus"
-  | "entity.doubleClick"
-  | "scene.click"
-  | "scene.context"
-  | "camera.change"
-  | "quality.change"
-  | "visibility.change"
-  | "frame.before"
-  | "frame.after";
-
-export interface RenderEventMap {
-  "entity.hover": {
-    entityId: EntityId;
-    x: number;
-    y: number;
-  };
-
-  "entity.leave": {
-    entityId: EntityId;
-  };
-
-  "entity.select": {
-    entityId: EntityId;
-  };
-
-  "entity.focus": {
-    entityId: EntityId;
-  };
-
-  "entity.doubleClick": {
-    entityId: EntityId;
-  };
-
-  "scene.click": {
-    x: number;
-    y: number;
-  };
-
-  "scene.context": {
-    x: number;
-    y: number;
-    entityId?: EntityId;
-  };
-
-  "camera.change": {
-    position: Vec3;
-    targetId?: EntityId;
-  };
-
-  "quality.change": {
-    level: RenderQualityLevel;
-  };
-
-  "visibility.change": {
-    visibleCount: number;
-  };
-
-  "frame.before": {
-    deltaSeconds: number;
-  };
-
-  "frame.after": {
-    deltaSeconds: number;
-    drawCalls: number;
-  };
-}
-
-export type RenderEventListener<T extends RenderEventName> = (
-  event: RenderEventMap[T],
-) => void;
-
-export class RenderEventHub {
-  private readonly listeners = new Map<
-    RenderEventName,
-    Set<(event: unknown) => void>
-  >();
-
-  on<T extends RenderEventName>(
-    name: T,
-    listener: RenderEventListener<T>,
-  ): () => void {
-    let group = this.listeners.get(name);
-
-    if (!group) {
-      group = new Set();
-
-      this.listeners.set(name, group);
-    }
-
-    group.add(listener as (event: unknown) => void);
-
-    return () => {
-      this.off(name, listener);
-    };
-  }
-
-  off<T extends RenderEventName>(
-    name: T,
-    listener: RenderEventListener<T>,
-  ): void {
-    const group = this.listeners.get(name);
-
-    if (!group) {
-      return;
-    }
-
-    group.delete(listener as (event: unknown) => void);
-
-    if (group.size === 0) {
-      this.listeners.delete(name);
-    }
-  }
-
-  emit<T extends RenderEventName>(name: T, event: RenderEventMap[T]): void {
-    const group = this.listeners.get(name);
-
-    if (!group) {
-      return;
-    }
-
-    for (const listener of group) {
-      listener(event);
-    }
-  }
-
-  clear(): void {
-    this.listeners.clear();
-  }
-
-  listenerCount(name?: RenderEventName): number {
-    if (name) {
-      return this.listeners.get(name)?.size ?? 0;
-    }
-
-    let count = 0;
-
-    for (const group of this.listeners.values()) {
-      count += group.size;
-    }
-
-    return count;
-  }
-}
-
-export interface SceneSelectionState {
-  selectedId?: EntityId;
-  hoveredId?: EntityId;
-  focusedId?: EntityId;
-}
-
-export type SceneSelectionListener = (state: SceneSelectionState) => void;
-
-export class SceneSelectionModel {
-  private state: SceneSelectionState = {};
-
-  private readonly listeners = new Set<SceneSelectionListener>();
-
-  getSnapshot(): SceneSelectionState {
-    return {
-      ...this.state,
-    };
-  }
-
-  subscribe(listener: SceneSelectionListener): () => void {
-    this.listeners.add(listener);
-
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  private notify(): void {
-    const snapshot = this.getSnapshot();
-
-    for (const listener of this.listeners) {
-      listener(snapshot);
-    }
-  }
-
-  setSelected(id: EntityId | null): void {
-    if (id === null) {
-      if (this.state.selectedId === undefined) {
-        return;
-      }
-
-      const next = {
-        ...this.state,
-      };
-
-      delete next.selectedId;
-
-      this.state = next;
-
-      this.notify();
-
-      return;
-    }
-
-    if (this.state.selectedId === id) {
-      return;
-    }
-
-    this.state = {
-      ...this.state,
-      selectedId: id,
-    };
-
-    this.notify();
-  }
-
-  setHovered(id: EntityId | null): void {
-    if (id === null) {
-      if (this.state.hoveredId === undefined) {
-        return;
-      }
-
-      const next = {
-        ...this.state,
-      };
-
-      delete next.hoveredId;
-
-      this.state = next;
-
-      this.notify();
-
-      return;
-    }
-
-    if (this.state.hoveredId === id) {
-      return;
-    }
-
-    this.state = {
-      ...this.state,
-      hoveredId: id,
-    };
-
-    this.notify();
-  }
-
-  setFocused(id: EntityId | null): void {
-    if (id === null) {
-      if (this.state.focusedId === undefined) {
-        return;
-      }
-
-      const next = {
-        ...this.state,
-      };
-
-      delete next.focusedId;
-
-      this.state = next;
-
-      this.notify();
-
-      return;
-    }
-
-    if (this.state.focusedId === id) {
-      return;
-    }
-
-    this.state = {
-      ...this.state,
-      focusedId: id,
-    };
-
-    this.notify();
-  }
-
-  clear(): void {
-    if (Object.keys(this.state).length === 0) {
-      return;
-    }
-
-    this.state = {};
-
-    this.notify();
-  }
-}
-
-export interface EntityRenderFilter {
-  planets: boolean;
-  moons: boolean;
-  stars: boolean;
-  compactObjects: boolean;
-  asteroids: boolean;
-  comets: boolean;
-  satellites: boolean;
-  spacecraft: boolean;
-  debris: boolean;
-  nebulae: boolean;
-  clusters: boolean;
-  galaxies: boolean;
-  surfaceFeatures: boolean;
-  humanGeography: boolean;
-}
-
-export const DEFAULT_ENTITY_FILTER: EntityRenderFilter = {
-  planets: true,
-  moons: true,
-  stars: true,
-  compactObjects: true,
-  asteroids: true,
-  comets: true,
-  satellites: true,
-  spacecraft: true,
-  debris: true,
-  nebulae: true,
-  clusters: true,
-  galaxies: true,
-  surfaceFeatures: true,
-  humanGeography: true,
-};
-
-export function entityKindVisible(
-  kind: EntityKind,
-  filter: EntityRenderFilter,
-): boolean {
-  switch (kind) {
-    case "planet":
-    case "dwarf-planet":
-      return filter.planets;
-
-    case "moon":
-      return filter.moons;
-
-    case "star":
-      return filter.stars;
-
-    case "black-hole":
-    case "neutron-star":
-      return filter.compactObjects;
-
-    case "asteroid":
-      return filter.asteroids;
-
-    case "comet":
-      return filter.comets;
-
-    case "satellite":
-      return filter.satellites;
-
-    case "spacecraft":
-      return filter.spacecraft;
-
-    case "debris":
-      return filter.debris;
-
-    case "nebula":
-      return filter.nebulae;
-
-    case "star-cluster":
-      return filter.clusters;
-
-    case "galaxy":
-    case "galaxy-group":
-    case "galaxy-cluster":
-    case "cosmic-structure":
-      return filter.galaxies;
-
-    case "surface-feature":
-      return filter.surfaceFeatures;
-
-    case "building":
-    case "city":
-    case "country":
-      return filter.humanGeography;
-  }
-}
-
-export interface VisibilityContext {
-  state: UniverseState;
-
-  cameraPosition: Vector3;
-
-  maximumObjects: number;
-
-  filter: EntityRenderFilter;
-}
-
-export interface VisibilityResult {
-  entityIds: readonly EntityId[];
-
-  totalCandidates: number;
-
-  rejectedByFilter: number;
-
-  rejectedByFrame: number;
-
-  rejectedByBudget: number;
-}
-
-interface VisibilityCandidate {
-  id: EntityId;
-
-  priority: number;
-}
-
-export class EntityVisibilityPolicy {
-  private readonly resolver = new FrameSpace();
-
-  select(context: VisibilityContext): VisibilityResult {
-    const candidates: VisibilityCandidate[] = [];
-
-    let rejectedByFilter = 0;
-    let rejectedByFrame = 0;
-
-    for (const entity of context.state.entities.values()) {
-      if (!entityKindVisible(entity.kind, context.filter)) {
-        rejectedByFilter++;
-        continue;
-      }
-
-      const position = this.resolver.resolve(entity, context.state);
-
-      if (!position) {
-        rejectedByFrame++;
-        continue;
-      }
-
-      const distance = position.distanceTo(context.cameraPosition);
-
-      const radius = entitySceneRadius(
-        entity,
-        context.state.scale.metersPerUnit,
-      );
-
-      let priority = 1 / Math.max(distance, 0.001);
-
-      if (radius !== null) {
-        priority *= Math.max(radius, 0.001);
-      }
-
-      if (context.state.selectedId === entity.id) {
-        priority += 1_000_000;
-      }
-
-      if (context.state.focusId === entity.id) {
-        priority += 2_000_000;
-      }
-
-      candidates.push({
-        id: entity.id,
-
-        priority,
-      });
-    }
-
-    candidates.sort((a, b) => b.priority - a.priority);
-
-    const maximum = Math.max(1, Math.floor(context.maximumObjects));
-
-    const selected = candidates.slice(0, maximum);
-
-    return {
-      entityIds: selected.map((candidate) => candidate.id),
-
-      totalCandidates: candidates.length,
-
-      rejectedByFilter,
-
-      rejectedByFrame,
-
-      rejectedByBudget: Math.max(0, candidates.length - maximum),
-    };
-  }
-}
-
-// CHECKPOINT 2: projection and labels
-
-export interface ScreenPoint {
-  x: number;
-  y: number;
-  depth: number;
-  visible: boolean;
-}
-
-export class ScreenProjector {
-  private readonly working = new Vector3();
-
-  project(
-    worldPosition: Vector3,
-
-    camera: PerspectiveCamera,
-
-    width: number,
-    height: number,
-  ): ScreenPoint {
-    this.working.copy(worldPosition);
-
-    this.working.project(camera);
-
-    const visible =
-      this.working.z >= -1 &&
-      this.working.z <= 1 &&
-      this.working.x >= -1 &&
-      this.working.x <= 1 &&
-      this.working.y >= -1 &&
-      this.working.y <= 1;
-
-    return {
-      x: (this.working.x * 0.5 + 0.5) * width,
-
-      y: (-this.working.y * 0.5 + 0.5) * height,
-
-      depth: this.working.z,
-
-      visible,
-    };
-  }
-}
-
-export interface LabelStyle {
-  fontSize: number;
-
-  opacity: number;
-
-  showKind: boolean;
-
-  showDistance: boolean;
-
-  maximumLabels: number;
-
-  minimumPriority: number;
-}
-
-export const DEFAULT_LABEL_STYLE: LabelStyle = {
-  fontSize: 12,
-
-  opacity: 0.9,
-
-  showKind: false,
-
-  showDistance: false,
-
-  maximumLabels: 100,
-
-  minimumPriority: 0,
-};
-
-interface LabelEntry {
-  entityId: EntityId;
-
-  element: HTMLDivElement;
-
-  priority: number;
-
-  visible: boolean;
-}
-
-export class DomLabelLayer {
-  readonly element: HTMLDivElement;
-
-  private readonly entries = new Map<EntityId, LabelEntry>();
-
-  private readonly projector = new ScreenProjector();
-
-  private style: LabelStyle;
-
-  constructor(parent: HTMLElement, style: Partial<LabelStyle> = {}) {
-    this.style = {
-      ...DEFAULT_LABEL_STYLE,
-      ...style,
-    };
-
-    this.element = document.createElement("div");
-
-    this.element.className = "universe-label-layer";
-
-    Object.assign(this.element.style, {
-      position: "absolute",
-
-      inset: "0",
-
-      overflow: "hidden",
-
-      pointerEvents: "none",
-
-      userSelect: "none",
-    });
-
-    parent.appendChild(this.element);
-  }
-
-  setStyle(style: Partial<LabelStyle>): void {
-    this.style = {
-      ...this.style,
-      ...style,
-    };
-  }
-
-  private createLabel(entity: SpaceEntity): LabelEntry {
-    const element = document.createElement("div");
-
-    element.dataset.entityId = entity.id;
-
-    Object.assign(element.style, {
-      position: "absolute",
-
-      transform: "translate(-50%, -50%)",
-
-      whiteSpace: "nowrap",
-
-      color: "#f5f7ff",
-
-      textShadow: "0 1px 4px rgba(0,0,0,.95)",
-
-      fontFamily: "Inter, system-ui, sans-serif",
-
-      pointerEvents: "none",
-
-      willChange: "transform, opacity",
-    });
-
-    this.element.appendChild(element);
-
-    return {
-      entityId: entity.id,
-
-      element,
-
-      priority: 0,
-
-      visible: false,
-    };
-  }
-
-  private textFor(entity: SpaceEntity): string {
-    if (this.style.showKind) {
-      return `${entity.name} Â· ` + entity.kind;
-    }
-
-    return entity.name;
-  }
-
-  sync(
-    state: UniverseState,
-
-    index: EntitySceneIndex,
-
-    camera: PerspectiveCamera,
-
-    width: number,
-    height: number,
-  ): void {
-    if (!state.overlays.labels) {
-      this.hideAll();
-      return;
-    }
-
-    const candidates: LabelEntry[] = [];
-
-    for (const entity of state.entities.values()) {
-      const position = index.getPosition(entity.id);
-
-      if (!position) {
-        continue;
-      }
-
-      let entry = this.entries.get(entity.id);
-
-      if (!entry) {
-        entry = this.createLabel(entity);
-
-        this.entries.set(entity.id, entry);
-      }
-
-      const projected = this.projector.project(position, camera, width, height);
-
-      if (!projected.visible) {
-        entry.visible = false;
-
-        entry.element.style.display = "none";
-
-        continue;
-      }
-
-      const isSelected = state.selectedId === entity.id;
-
-      const isFocused = state.focusId === entity.id;
-
-      const priority =
-        (isFocused ? 1_000_000 : 0) +
-        (isSelected ? 500_000 : 0) +
-        (1 - projected.depth);
-
-      entry.priority = priority;
-
-      entry.element.textContent = this.textFor(entity);
-
-      entry.element.style.fontSize = `${this.style.fontSize}px`;
-
-      entry.element.style.opacity = String(this.style.opacity);
-
-      entry.element.style.left = `${projected.x}px`;
-
-      entry.element.style.top = `${projected.y}px`;
-
-      candidates.push(entry);
-    }
-
-    candidates.sort((a, b) => b.priority - a.priority);
-
-    const visible = new Set<EntityId>();
-
-    const maximum = Math.max(0, Math.floor(this.style.maximumLabels));
-
-    for (let i = 0; i < candidates.length; i++) {
-      const entry = candidates[i];
-
-      if (!entry) {
-        continue;
-      }
-
-      const show = i < maximum && entry.priority >= this.style.minimumPriority;
-
-      entry.visible = show;
-
-      entry.element.style.display = show ? "block" : "none";
-
-      if (show) {
-        visible.add(entry.entityId);
-      }
-    }
-
-    for (const [id, entry] of this.entries) {
-      if (!state.entities.has(id)) {
-        entry.element.remove();
-
-        this.entries.delete(id);
-
-        continue;
-      }
-
-      if (!visible.has(id) && !candidates.includes(entry)) {
-        entry.visible = false;
-
-        entry.element.style.display = "none";
-      }
-    }
-  }
-
-  hideAll(): void {
-    for (const entry of this.entries.values()) {
-      entry.visible = false;
-
-      entry.element.style.display = "none";
-    }
-  }
-
-  clear(): void {
-    for (const entry of this.entries.values()) {
-      entry.element.remove();
-    }
-
-    this.entries.clear();
-  }
-
-  dispose(): void {
-    this.clear();
-
-    this.element.remove();
-  }
-
-  get count(): number {
-    return this.entries.size;
-  }
-
-  get visibleCount(): number {
-    let count = 0;
-
-    for (const entry of this.entries.values()) {
-      if (entry.visible) {
-        count++;
-      }
-    }
-
-    return count;
-  }
-}
-
-// CHECKPOINT 3: pointer and scene interaction
-
-export interface PointerPosition {
-  clientX: number;
-  clientY: number;
-}
-
-export interface PointerInteractionOptions {
-  hoverDelayMs: number;
-
-  doubleClickDelayMs: number;
-
-  movementTolerancePx: number;
-}
-
-export const DEFAULT_POINTER_OPTIONS: PointerInteractionOptions = {
-  hoverDelayMs: 40,
-
-  doubleClickDelayMs: 300,
-
-  movementTolerancePx: 5,
-};
-
-export class PointerInteractionController {
-  private readonly options: PointerInteractionOptions;
-
-  private attached = false;
-
-  private hoveredId: EntityId | undefined;
-
-  private downPosition: PointerPosition | null = null;
-
-  private lastClickTime = 0;
-
-  private hoverTimer: number | null = null;
-
-  constructor(
-    private readonly canvas: HTMLCanvasElement,
-
-    private readonly picking: PickingController,
-
-    private readonly events: RenderEventHub,
-
-    options: Partial<PointerInteractionOptions> = {},
-  ) {
-    this.options = {
-      ...DEFAULT_POINTER_OPTIONS,
-      ...options,
-    };
-  }
-
-  private clearHoverTimer(): void {
-    if (this.hoverTimer !== null) {
-      window.clearTimeout(this.hoverTimer);
-
-      this.hoverTimer = null;
-    }
-  }
-
-  private readonly pointerMove = (event: PointerEvent) => {
-    this.clearHoverTimer();
-
-    this.hoverTimer = window.setTimeout(() => {
-      const id = this.picking.pick(event.clientX, event.clientY);
-
-      if (id === this.hoveredId) {
-        return;
-      }
-
-      if (this.hoveredId) {
-        this.events.emit("entity.leave", {
-          entityId: this.hoveredId,
-        });
-      }
-
-      this.hoveredId = id;
-
-      if (id) {
-        this.events.emit("entity.hover", {
-          entityId: id,
-
-          x: event.clientX,
-
-          y: event.clientY,
-        });
-      }
-    }, this.options.hoverDelayMs);
-  };
-
-  private readonly pointerDown = (event: PointerEvent) => {
-    this.downPosition = {
-      clientX: event.clientX,
-
-      clientY: event.clientY,
-    };
-  };
-
-  private readonly pointerUp = (event: PointerEvent) => {
-    const start = this.downPosition;
-
-    this.downPosition = null;
-
-    if (!start) {
-      return;
-    }
-
-    const dx = event.clientX - start.clientX;
-
-    const dy = event.clientY - start.clientY;
-
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance > this.options.movementTolerancePx) {
-      return;
-    }
-
-    const id = this.picking.pick(event.clientX, event.clientY);
-
-    const now = performance.now();
-
-    const doubleClick =
-      now - this.lastClickTime <= this.options.doubleClickDelayMs;
-
-    this.lastClickTime = now;
-
-    if (id) {
-      if (doubleClick) {
-        this.events.emit("entity.doubleClick", {
-          entityId: id,
-        });
-
-        this.events.emit("entity.focus", {
-          entityId: id,
-        });
-      } else {
-        this.events.emit("entity.select", {
-          entityId: id,
-        });
-      }
-    } else {
-      this.events.emit("scene.click", {
-        x: event.clientX,
-
-        y: event.clientY,
-      });
-    }
-  };
-
-  private readonly contextMenu = (event: MouseEvent) => {
-    event.preventDefault();
-
-    const id = this.picking.pick(event.clientX, event.clientY);
-
-    if (id) {
-      this.events.emit("scene.context", {
-        x: event.clientX,
-
-        y: event.clientY,
-
-        entityId: id,
-      });
-
-      return;
-    }
-
-    this.events.emit("scene.context", {
-      x: event.clientX,
-
-      y: event.clientY,
-    });
-  };
-
-  private readonly pointerLeave = () => {
-    this.clearHoverTimer();
-
-    if (this.hoveredId) {
-      this.events.emit("entity.leave", {
-        entityId: this.hoveredId,
-      });
-    }
-
-    this.hoveredId = undefined;
-  };
-
-  attach(): void {
-    if (this.attached) {
-      return;
-    }
-
-    this.canvas.addEventListener("pointermove", this.pointerMove);
-
-    this.canvas.addEventListener("pointerdown", this.pointerDown);
-
-    this.canvas.addEventListener("pointerup", this.pointerUp);
-
-    this.canvas.addEventListener("pointerleave", this.pointerLeave);
-
-    this.canvas.addEventListener("contextmenu", this.contextMenu);
-
-    this.attached = true;
-  }
-
-  detach(): void {
-    if (!this.attached) {
-      return;
-    }
-
-    this.clearHoverTimer();
-
-    this.canvas.removeEventListener("pointermove", this.pointerMove);
-
-    this.canvas.removeEventListener("pointerdown", this.pointerDown);
-
-    this.canvas.removeEventListener("pointerup", this.pointerUp);
-
-    this.canvas.removeEventListener("pointerleave", this.pointerLeave);
-
-    this.canvas.removeEventListener("contextmenu", this.contextMenu);
-
-    this.attached = false;
-
-    this.hoveredId = undefined;
-
-    this.downPosition = null;
-  }
-}
-
-// CHECKPOINT 4: camera transitions and bookmarks
-
-export type CameraEasing = "linear" | "easeIn" | "easeOut" | "easeInOut";
-
-export interface CameraPose {
-  position: Vec3;
-
-  fieldOfView: number;
-
-  frameId: string;
-
-  targetId?: EntityId;
-}
-
-export interface CameraTransition {
-  from: CameraPose;
-
-  to: CameraPose;
-
-  durationSeconds: number;
-
-  elapsedSeconds: number;
-
-  easing: CameraEasing;
-}
-
-function easeValue(value: number, easing: CameraEasing): number {
-  const t = clamp(value, 0, 1);
-
-  switch (easing) {
-    case "linear":
-      return t;
-
-    case "easeIn":
-      return t * t;
-
-    case "easeOut":
-      return 1 - (1 - t) * (1 - t);
-
-    case "easeInOut":
-      if (t < 0.5) {
-        return 2 * t * t;
-      }
-
-      return 1 - Math.pow(-2 * t + 2, 2) / 2;
-  }
-}
-
-function mixNumber(from: number, to: number, amount: number): number {
-  return from + (to - from) * amount;
-}
-
-function mixTuple(from: Vec3, to: Vec3, amount: number): Vec3 {
-  return [
-    mixNumber(from[0], to[0], amount),
-
-    mixNumber(from[1], to[1], amount),
-
-    mixNumber(from[2], to[2], amount),
-  ];
-}
-
-export class CameraTransitionController {
-  private current: CameraTransition | null = null;
-
-  start(
-    from: CameraPose,
-    to: CameraPose,
-    durationSeconds = 1.5,
-    easing: CameraEasing = "easeInOut",
-  ): void {
-    this.current = {
-      from,
-
-      to,
-
-      durationSeconds: Math.max(0.001, durationSeconds),
-
-      elapsedSeconds: 0,
-
-      easing,
-    };
-  }
-
-  update(deltaSeconds: number): CameraPose | null {
-    const transition = this.current;
-
-    if (!transition) {
-      return null;
-    }
-
-    transition.elapsedSeconds += Math.max(0, deltaSeconds);
-
-    const progress = clamp(
-      transition.elapsedSeconds / transition.durationSeconds,
-      0,
-      1,
-    );
-
-    const eased = easeValue(progress, transition.easing);
-
-    const pose: CameraPose = {
-      position: mixTuple(
-        transition.from.position,
-
-        transition.to.position,
-
-        eased,
-      ),
-
-      fieldOfView: mixNumber(
-        transition.from.fieldOfView,
-
-        transition.to.fieldOfView,
-
-        eased,
-      ),
-
-      frameId: progress < 1 ? transition.from.frameId : transition.to.frameId,
-    };
 
     const targetId =
-      progress < 0.5 ? transition.from.targetId : transition.to.targetId;
 
-    if (targetId !== undefined) {
-      pose.targetId = targetId;
+      state.camera.targetId ??
+
+      state.focusId;
+
+
+
+    const target =
+
+      targetId
+
+        ? this.index.getPosition(
+
+            targetId,
+
+          )
+
+        : undefined;
+
+
+
+    if (target) {
+
+      camera.lookAt(
+
+        target,
+
+      );
+
+    } else {
+
+      camera.lookAt(
+
+        0,
+
+        0,
+
+        0,
+
+      );
+
     }
 
-    if (progress >= 1) {
-      this.current = null;
+  }
+
+
+
+  private syncLabels(
+
+    frame: RenderFrame,
+
+  ): void {
+
+    const camera =
+
+      this.requireCamera();
+
+
+
+    const container =
+
+      this.container;
+
+
+
+    if (!container) {
+
+      return;
+
     }
 
-    return pose;
-  }
 
-  cancel(): void {
-    this.current = null;
-  }
 
-  get active(): boolean {
-    return this.current !== null;
-  }
+    const width =
 
-  get progress(): number {
-    if (!this.current) {
-      return 0;
-    }
+      Math.max(
 
-    return clamp(
-      this.current.elapsedSeconds / this.current.durationSeconds,
-      0,
-      1,
-    );
-  }
-}
+        1,
 
-export interface CameraBookmark {
-  id: string;
+        container.clientWidth,
 
-  name: string;
+      );
 
-  createdAt: number;
 
-  pose: CameraPose;
 
-  scaleBand: UniverseState["scale"]["band"];
+    const height =
 
-  metersPerUnit: number;
-}
+      Math.max(
 
-export class CameraBookmarkStore {
-  private readonly bookmarks = new Map<string, CameraBookmark>();
+        1,
 
-  add(bookmark: CameraBookmark): void {
-    if (!bookmark.id.trim()) {
-      throw new Error("Bookmark id cannot be empty.");
-    }
+        container.clientHeight,
 
-    this.bookmarks.set(bookmark.id, {
-      ...bookmark,
+      );
 
-      pose: {
-        ...bookmark.pose,
 
-        position: [...bookmark.pose.position] as Vec3,
-      },
-    });
-  }
 
-  create(name: string, state: UniverseState): CameraBookmark {
-    const id = `bookmark-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
+    const labels =
 
-    const pose: CameraPose = {
-      position: [...state.camera.position] as Vec3,
+      frame.state.overlays
 
-      fieldOfView: state.camera.fieldOfView,
+        .labels;
 
-      frameId: state.camera.frameId,
-    };
 
-    if (state.camera.targetId !== undefined) {
-      pose.targetId = state.camera.targetId;
-    }
 
-    const bookmark: CameraBookmark = {
-      id,
+    const occupied: {
 
-      name,
+      x: number;
 
-      createdAt: Date.now(),
+      y: number;
 
-      pose,
+    }[] = [];
 
-      scaleBand: state.scale.band,
 
-      metersPerUnit: state.scale.metersPerUnit,
-    };
 
-    this.add(bookmark);
+    const entries =
 
-    return bookmark;
-  }
+      [
 
-  get(id: string): CameraBookmark | undefined {
-    const bookmark = this.bookmarks.get(id);
+        ...this.index.values(),
 
-    if (!bookmark) {
-      return undefined;
-    }
+      ].sort(
 
-    return {
-      ...bookmark,
+        (left, right) => {
 
-      pose: {
-        ...bookmark.pose,
+          const leftPriority =
 
-        position: [...bookmark.pose.position] as Vec3,
-      },
-    };
-  }
+            (frame.state
 
-  remove(id: string): boolean {
-    return this.bookmarks.delete(id);
-  }
+              .selectedId ===
 
-  clear(): void {
-    this.bookmarks.clear();
-  }
+            left.id
 
-  all(): CameraBookmark[] {
-    return [...this.bookmarks.values()]
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .map((bookmark) => ({
-        ...bookmark,
+              ? 100
 
-        pose: {
-          ...bookmark.pose,
+              : 0) +
 
-          position: [...bookmark.pose.position] as Vec3,
+            (frame.state
+
+              .focusId ===
+
+            left.id
+
+              ? 80
+
+              : 0) +
+
+            (left.id ===
+
+            "sun"
+
+              ? 20
+
+              : 0);
+
+
+
+          const rightPriority =
+
+            (frame.state
+
+              .selectedId ===
+
+            right.id
+
+              ? 100
+
+              : 0) +
+
+            (frame.state
+
+              .focusId ===
+
+            right.id
+
+              ? 80
+
+              : 0) +
+
+            (right.id ===
+
+            "sun"
+
+              ? 20
+
+              : 0);
+
+
+
+          return (
+
+            rightPriority -
+
+            leftPriority
+
+          );
+
         },
-      }));
-  }
 
-  get size(): number {
-    return this.bookmarks.size;
-  }
-}
+      );
 
-// CHECKPOINT 5: quality management
 
-export type RenderQualityLevel =
-  "minimal" | "low" | "balanced" | "high" | "ultra";
 
-export interface RenderQualityProfile {
-  level: RenderQualityLevel;
+    for (
 
-  pixelRatioLimit: number;
+      const entry of entries
 
-  starDensity: number;
+    ) {
 
-  debrisDensity: number;
+      const label =
 
-  orbitDetail: number;
+        entry.label;
 
-  sphereSegments: number;
 
-  maximumLabels: number;
 
-  maximumVisibleObjects: number;
-}
+      if (!label) {
 
-export const QUALITY_PROFILES: Readonly<
-  Record<RenderQualityLevel, RenderQualityProfile>
-> = {
-  minimal: {
-    level: "minimal",
+        continue;
 
-    pixelRatioLimit: 1,
+      }
 
-    starDensity: 0.15,
 
-    debrisDensity: 0.1,
 
-    orbitDetail: 0.25,
+      if (!labels) {
 
-    sphereSegments: 8,
+        label.style.opacity =
 
-    maximumLabels: 20,
+          "0";
 
-    maximumVisibleObjects: 10_000,
-  },
 
-  low: {
-    level: "low",
 
-    pixelRatioLimit: 1,
+        continue;
 
-    starDensity: 0.35,
+      }
 
-    debrisDensity: 0.25,
 
-    orbitDetail: 0.5,
 
-    sphereSegments: 12,
+      const projected =
 
-    maximumLabels: 40,
+        entry.position
 
-    maximumVisibleObjects: 50_000,
-  },
+          .clone()
 
-  balanced: {
-    level: "balanced",
+          .project(camera);
 
-    pixelRatioLimit: 1.5,
 
-    starDensity: 0.65,
 
-    debrisDensity: 0.5,
+      const visible =
 
-    orbitDetail: 0.75,
+        projected.z > -1 &&
 
-    sphereSegments: 20,
+        projected.z < 1 &&
 
-    maximumLabels: 80,
+        Math.abs(
 
-    maximumVisibleObjects: 150_000,
-  },
+          projected.x,
 
-  high: {
-    level: "high",
+        ) < 1.15 &&
 
-    pixelRatioLimit: 2,
+        Math.abs(
 
-    starDensity: 1,
+          projected.y,
 
-    debrisDensity: 0.8,
+        ) < 1.15;
 
-    orbitDetail: 1,
 
-    sphereSegments: 32,
 
-    maximumLabels: 150,
+      if (!visible) {
 
-    maximumVisibleObjects: 350_000,
-  },
+        label.style.opacity =
 
-  ultra: {
-    level: "ultra",
+          "0";
 
-    pixelRatioLimit: 3,
 
-    starDensity: 1.5,
 
-    debrisDensity: 1,
+        continue;
 
-    orbitDetail: 1.5,
+      }
 
-    sphereSegments: 48,
 
-    maximumLabels: 300,
 
-    maximumVisibleObjects: 750_000,
-  },
-};
+      const x =
 
-export interface QualitySample {
-  frameTimeMs: number;
+        (projected.x *
 
-  timestamp: number;
-}
+          0.5 +
 
-export class AdaptiveRenderQuality {
-  private level: RenderQualityLevel = "balanced";
+          0.5) *
 
-  private readonly samples: QualitySample[] = [];
+        width;
 
-  private lastChange = 0;
 
-  constructor(
-    private readonly targetFps = 60,
 
-    private readonly cooldownMs = 3_000,
-  ) {}
+      const y =
 
-  pushFrame(
-    frameTimeMs: number,
-    timestamp = performance.now(),
-  ): RenderQualityProfile {
-    if (Number.isFinite(frameTimeMs) && frameTimeMs >= 0) {
-      this.samples.push({
-        frameTimeMs,
-        timestamp,
+        (-projected.y *
+
+          0.5 +
+
+          0.5) *
+
+        height;
+
+
+
+      const important =
+
+        frame.state
+
+          .selectedId ===
+
+          entry.id ||
+
+        frame.state
+
+          .focusId ===
+
+          entry.id;
+
+
+
+      const collision =
+
+        occupied.some(
+
+          (point) =>
+
+            Math.abs(
+
+              point.x - x,
+
+            ) < 65 &&
+
+            Math.abs(
+
+              point.y - y,
+
+            ) < 24,
+
+        );
+
+
+
+      if (
+
+        collision &&
+
+        !important
+
+      ) {
+
+        label.style.opacity =
+
+          "0";
+
+
+
+        continue;
+
+      }
+
+
+
+      occupied.push({
+
+        x,
+
+        y,
+
       });
+
+
+
+      label.style.left =
+
+        `${x}px`;
+
+
+
+      label.style.top =
+
+        `${
+
+          y -
+
+          entry.radius * 7 -
+
+          10
+
+        }px`;
+
+
+
+      label.style.opacity =
+
+        important
+
+          ? "1"
+
+          : "0.72";
+
+
+
+      label.style.color =
+
+        important
+
+          ? "#ffffff"
+
+          : "#d4e0f2";
+
+
+
+      label.style.fontSize =
+
+        important
+
+          ? "12px"
+
+          : "10px";
+
     }
 
-    while (this.samples.length > 180) {
-      this.samples.shift();
-    }
-
-    this.adjust(timestamp);
-
-    return this.profile;
   }
 
-  private averageFrameTime(): number {
-    if (this.samples.length === 0) {
-      return 0;
-    }
 
-    let total = 0;
 
-    for (const sample of this.samples) {
-      total += sample.frameTimeMs;
-    }
+  private updateStats(
 
-    return total / this.samples.length;
+    milliseconds: number,
+
+  ): void {
+
+    const renderer =
+
+      this.requireRenderer();
+
+
+
+    const information =
+
+      renderer.info.render;
+
+
+
+    this.stats.drawCalls =
+
+      information.calls;
+
+
+
+    this.stats.triangles =
+
+      information.triangles;
+
+
+
+    this.stats.points =
+
+      information.points;
+
+
+
+    this.stats.lines =
+
+      information.lines;
+
+
+
+    this.stats.objects =
+
+      this.index.size;
+
+
+
+    this.stats.sceneObjects =
+
+      this.index.size +
+
+      this.orbitEntries.size +
+
+      4;
+
+
+
+    this.stats.frameMs =
+
+      milliseconds;
+
+
+
+    this.stats.visibleEntities =
+
+      this.index.size;
+
   }
 
-  private adjust(timestamp: number): void {
-    if (this.samples.length < 30) {
-      return;
-    }
 
-    if (timestamp - this.lastChange < this.cooldownMs) {
-      return;
-    }
 
-    const average = this.averageFrameTime();
+  render(
 
-    const target = 1_000 / this.targetFps;
+    frame: RenderFrame,
 
-    if (average > target * 1.35) {
-      this.lower();
+  ): void {
 
-      this.lastChange = timestamp;
+    const renderer =
 
-      return;
-    }
+      this.requireRenderer();
 
-    if (average < target * 0.75) {
-      this.raise();
 
-      this.lastChange = timestamp;
-    }
-  }
 
-  private lower(): void {
-    switch (this.level) {
-      case "ultra":
-        this.level = "high";
-        break;
+    const scene =
 
-      case "high":
-        this.level = "balanced";
-        break;
+      this.requireScene();
 
-      case "balanced":
-        this.level = "low";
-        break;
 
-      case "low":
-        this.level = "minimal";
-        break;
 
-      case "minimal":
-        break;
-    }
-  }
+    const camera =
 
-  private raise(): void {
-    switch (this.level) {
-      case "minimal":
-        this.level = "low";
-        break;
+      this.requireCamera();
 
-      case "low":
-        this.level = "balanced";
-        break;
 
-      case "balanced":
-        this.level = "high";
-        break;
 
-      case "high":
-        this.level = "ultra";
-        break;
+    const started =
 
-      case "ultra":
-        break;
-    }
-  }
+      performance.now();
 
-  setLevel(level: RenderQualityLevel): void {
-    this.level = level;
 
-    this.lastChange = performance.now();
-  }
 
-  reset(): void {
-    this.samples.length = 0;
+    this.syncEntities(
 
-    this.level = "balanced";
+      frame,
 
-    this.lastChange = 0;
-  }
-
-  get profile(): RenderQualityProfile {
-    return {
-      ...QUALITY_PROFILES[this.level],
-    };
-  }
-
-  get currentLevel(): RenderQualityLevel {
-    return this.level;
-  }
-}
-
-// CHECKPOINT 6: dense point catalog layers
-
-export type DenseLayerKind = "stars" | "debris" | "galaxies" | "background";
-
-export interface DensePointRecord {
-  id: EntityId;
-
-  position: Vec3;
-}
-
-export interface DenseLayerOptions {
-  capacity: number;
-
-  size: number;
-
-  color: number;
-
-  opacity: number;
-}
-
-export const DEFAULT_DENSE_LAYER_OPTIONS: Readonly<
-  Record<DenseLayerKind, DenseLayerOptions>
-> = {
-  stars: {
-    capacity: 100_000,
-
-    size: 1.25,
-
-    color: 0xffffff,
-
-    opacity: 0.9,
-  },
-
-  debris: {
-    capacity: 50_000,
-
-    size: 1,
-
-    color: 0xffb36b,
-
-    opacity: 0.7,
-  },
-
-  galaxies: {
-    capacity: 50_000,
-
-    size: 1.5,
-
-    color: 0x9cc8ff,
-
-    opacity: 0.75,
-  },
-
-  background: {
-    capacity: 25_000,
-
-    size: 1,
-
-    color: 0xcddcff,
-
-    opacity: 0.45,
-  },
-};
-
-export class DenseCatalogLayer {
-  readonly kind: DenseLayerKind;
-
-  readonly points: PackedPointLayer;
-
-  private readonly ids: EntityId[] = [];
-
-  private records: DensePointRecord[] = [];
-
-  constructor(
-    kind: DenseLayerKind,
-
-    options: Partial<DenseLayerOptions> = {},
-  ) {
-    this.kind = kind;
-
-    const defaults = DEFAULT_DENSE_LAYER_OPTIONS[kind];
-
-    const merged = {
-      ...defaults,
-      ...options,
-    };
-
-    this.points = new PackedPointLayer(
-      merged.capacity,
-      merged.size,
-      merged.color,
     );
 
-    this.points.setOpacity(merged.opacity);
 
-    this.points.object.name = `dense-layer:${kind}`;
-  }
 
-  replace(records: readonly DensePointRecord[]): void {
-    this.records = records.map((record) => ({
-      id: record.id,
+    this.syncOrbits(
 
-      position: [...record.position] as Vec3,
-    }));
+      frame,
 
-    this.ids.length = 0;
-
-    const positions: Vec3[] = [];
-
-    for (const record of this.records) {
-      this.ids.push(record.id);
-
-      positions.push(record.position);
-    }
-
-    this.points.replace(positions);
-  }
-
-  clear(): void {
-    this.records = [];
-
-    this.ids.length = 0;
-
-    this.points.clear();
-  }
-
-  setVisible(visible: boolean): void {
-    this.points.object.visible = visible;
-  }
-
-  setDensity(density: number): void {
-    const amount = clamp(density, 0, 1);
-
-    const count = Math.floor(this.records.length * amount);
-
-    const positions: Vec3[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const record = this.records[i];
-
-      if (!record) {
-        continue;
-      }
-
-      positions.push(record.position);
-    }
-
-    this.points.replace(positions);
-  }
-
-  idAt(index: number): EntityId | undefined {
-    return this.ids[index];
-  }
-
-  dispose(): void {
-    this.points.dispose();
-
-    this.records = [];
-
-    this.ids.length = 0;
-  }
-
-  get size(): number {
-    return this.records.length;
-  }
-}
-
-export class DenseLayerManager {
-  readonly root = new Group();
-
-  private readonly layers = new Map<DenseLayerKind, DenseCatalogLayer>();
-
-  constructor() {
-    this.root.name = "dense-catalog-layers";
-  }
-
-  create(
-    kind: DenseLayerKind,
-
-    options: Partial<DenseLayerOptions> = {},
-  ): DenseCatalogLayer {
-    const previous = this.layers.get(kind);
-
-    if (previous) {
-      return previous;
-    }
-
-    const layer = new DenseCatalogLayer(kind, options);
-
-    this.layers.set(kind, layer);
-
-    this.root.add(layer.points.object);
-
-    return layer;
-  }
-
-  get(kind: DenseLayerKind): DenseCatalogLayer | undefined {
-    return this.layers.get(kind);
-  }
-
-  remove(kind: DenseLayerKind): void {
-    const layer = this.layers.get(kind);
-
-    if (!layer) {
-      return;
-    }
-
-    layer.points.object.removeFromParent();
-
-    layer.dispose();
-
-    this.layers.delete(kind);
-  }
-
-  applyQuality(profile: RenderQualityProfile): void {
-    const stars = this.layers.get("stars");
-
-    if (stars) {
-      stars.setDensity(clamp(profile.starDensity, 0, 1));
-    }
-
-    const debris = this.layers.get("debris");
-
-    if (debris) {
-      debris.setDensity(clamp(profile.debrisDensity, 0, 1));
-    }
-  }
-
-  clear(): void {
-    for (const layer of this.layers.values()) {
-      layer.clear();
-    }
-  }
-
-  dispose(): void {
-    for (const layer of this.layers.values()) {
-      layer.points.object.removeFromParent();
-
-      layer.dispose();
-    }
-
-    this.layers.clear();
-
-    this.root.removeFromParent();
-
-    this.root.clear();
-  }
-
-  get count(): number {
-    return this.layers.size;
-  }
-}
-
-// CHECKPOINT 7: prioritized renderer work queue
-
-export type RenderTaskPriority =
-  "critical" | "high" | "normal" | "low" | "background";
-
-const PRIORITY_SCORE: Record<RenderTaskPriority, number> = {
-  critical: 500,
-  high: 400,
-  normal: 300,
-  low: 200,
-  background: 100,
-};
-
-export interface RenderTask {
-  id: string;
-
-  priority: RenderTaskPriority;
-
-  run(): void | Promise<void>;
-}
-
-interface QueuedRenderTask {
-  task: RenderTask;
-
-  sequence: number;
-}
-
-export class RenderTaskQueue {
-  private readonly tasks: QueuedRenderTask[] = [];
-
-  private sequence = 0;
-
-  private running = false;
-
-  enqueue(task: RenderTask): void {
-    const existing = this.tasks.findIndex((entry) => entry.task.id === task.id);
-
-    if (existing >= 0) {
-      this.tasks.splice(existing, 1);
-    }
-
-    this.tasks.push({
-      task,
-
-      sequence: this.sequence++,
-    });
-  }
-
-  cancel(id: string): boolean {
-    const index = this.tasks.findIndex((entry) => entry.task.id === id);
-
-    if (index < 0) {
-      return false;
-    }
-
-    this.tasks.splice(index, 1);
-
-    return true;
-  }
-
-  private sort(): void {
-    this.tasks.sort((a, b) => {
-      const priority =
-        PRIORITY_SCORE[b.task.priority] - PRIORITY_SCORE[a.task.priority];
-
-      if (priority !== 0) {
-        return priority;
-      }
-
-      return a.sequence - b.sequence;
-    });
-  }
-
-  next(): RenderTask | undefined {
-    this.sort();
-
-    const entry = this.tasks.shift();
-
-    return entry?.task;
-  }
-
-  async runBudget(budgetMs: number): Promise<number> {
-    if (this.running) {
-      return 0;
-    }
-
-    this.running = true;
-
-    const started = performance.now();
-
-    const budget = Math.max(0, budgetMs);
-
-    let completed = 0;
-
-    try {
-      while (this.tasks.length > 0) {
-        if (performance.now() - started >= budget) {
-          break;
-        }
-
-        const task = this.next();
-
-        if (!task) {
-          break;
-        }
-
-        await task.run();
-
-        completed++;
-      }
-    } finally {
-      this.running = false;
-    }
-
-    return completed;
-  }
-
-  clear(): void {
-    this.tasks.length = 0;
-  }
-
-  get size(): number {
-    return this.tasks.length;
-  }
-}
-
-// CHECKPOINT 8: frame budget and diagnostics
-
-export interface FrameBudget {
-  frameMs: number;
-
-  simulationMs: number;
-
-  streamingMs: number;
-
-  labelsMs: number;
-
-  rendererMs: number;
-
-  backgroundMs: number;
-}
-
-export function createFrameBudget(targetFps: number): FrameBudget {
-  const frameMs = 1_000 / clamp(targetFps, 15, 240);
-
-  return {
-    frameMs,
-
-    simulationMs: frameMs * 0.2,
-
-    streamingMs: frameMs * 0.15,
-
-    labelsMs: frameMs * 0.1,
-
-    rendererMs: frameMs * 0.45,
-
-    backgroundMs: frameMs * 0.1,
-  };
-}
-
-export interface FrameTiming {
-  totalMs: number;
-
-  syncMs: number;
-
-  labelsMs: number;
-
-  renderMs: number;
-
-  tasksMs: number;
-}
-
-export class FrameTimer {
-  private frameStart = 0;
-
-  private marker = 0;
-
-  private syncMs = 0;
-  private labelsMs = 0;
-  private renderMs = 0;
-  private tasksMs = 0;
-
-  begin(): void {
-    this.frameStart = performance.now();
-
-    this.marker = this.frameStart;
-
-    this.syncMs = 0;
-    this.labelsMs = 0;
-    this.renderMs = 0;
-    this.tasksMs = 0;
-  }
-
-  private take(): number {
-    const now = performance.now();
-
-    const elapsed = now - this.marker;
-
-    this.marker = now;
-
-    return elapsed;
-  }
-
-  markSync(): void {
-    this.syncMs += this.take();
-  }
-
-  markLabels(): void {
-    this.labelsMs += this.take();
-  }
-
-  markRender(): void {
-    this.renderMs += this.take();
-  }
-
-  markTasks(): void {
-    this.tasksMs += this.take();
-  }
-
-  finish(): FrameTiming {
-    return {
-      totalMs: performance.now() - this.frameStart,
-
-      syncMs: this.syncMs,
-
-      labelsMs: this.labelsMs,
-
-      renderMs: this.renderMs,
-
-      tasksMs: this.tasksMs,
-    };
-  }
-}
-
-export interface DiagnosticSample {
-  timestamp: number;
-
-  frame: FrameTiming;
-
-  renderer: RendererStats;
-
-  labelCount: number;
-
-  taskCount: number;
-}
-
-export interface DiagnosticSummary {
-  samples: number;
-
-  averageFrameMs: number;
-
-  averageFps: number;
-
-  averageDrawCalls: number;
-
-  maximumDrawCalls: number;
-
-  averageVisibleEntities: number;
-
-  averageLabels: number;
-}
-
-export class RenderDiagnostics {
-  private readonly samples: DiagnosticSample[] = [];
-
-  constructor(private readonly maximumSamples = 300) {}
-
-  push(sample: DiagnosticSample): void {
-    this.samples.push(sample);
-
-    while (this.samples.length > this.maximumSamples) {
-      this.samples.shift();
-    }
-  }
-
-  summary(): DiagnosticSummary {
-    if (this.samples.length === 0) {
-      return {
-        samples: 0,
-
-        averageFrameMs: 0,
-
-        averageFps: 0,
-
-        averageDrawCalls: 0,
-
-        maximumDrawCalls: 0,
-
-        averageVisibleEntities: 0,
-
-        averageLabels: 0,
-      };
-    }
-
-    let frame = 0;
-    let calls = 0;
-    let maxCalls = 0;
-    let visible = 0;
-    let labels = 0;
-
-    for (const sample of this.samples) {
-      frame += sample.frame.totalMs;
-
-      calls += sample.renderer.drawCalls;
-
-      maxCalls = Math.max(
-        maxCalls,
-
-        sample.renderer.drawCalls,
-      );
-
-      visible += sample.renderer.visibleEntities;
-
-      labels += sample.labelCount;
-    }
-
-    const count = this.samples.length;
-
-    const averageFrameMs = frame / count;
-
-    return {
-      samples: count,
-
-      averageFrameMs,
-
-      averageFps: averageFrameMs > 0 ? 1_000 / averageFrameMs : 0,
-
-      averageDrawCalls: calls / count,
-
-      maximumDrawCalls: maxCalls,
-
-      averageVisibleEntities: visible / count,
-
-      averageLabels: labels / count,
-    };
-  }
-
-  latest(): DiagnosticSample | undefined {
-    return this.samples[this.samples.length - 1];
-  }
-
-  clear(): void {
-    this.samples.length = 0;
-  }
-}
-
-// CHECKPOINT 9: render themes and visual styles
-
-export interface EntityVisualStyle {
-  color: number;
-
-  markerOpacity: number;
-
-  bodyOpacity: number;
-
-  markerScale: number;
-
-  emissive: boolean;
-}
-
-export interface UniverseRenderTheme {
-  id: string;
-
-  name: string;
-
-  background: number;
-
-  selection: number;
-
-  focus: number;
-
-  orbit: number;
-
-  defaultMarker: number;
-
-  styles: Partial<Record<EntityKind, Partial<EntityVisualStyle>>>;
-}
-
-export const SCIENTIFIC_THEME: UniverseRenderTheme = {
-  id: "scientific",
-
-  name: "Scientific",
-
-  background: 0x030712,
-
-  selection: 0xffffff,
-
-  focus: 0x5ee7ff,
-
-  orbit: 0x718096,
-
-  defaultMarker: 0xd9e2f2,
-
-  styles: {
-    star: {
-      color: 0xffe6ac,
-
-      markerOpacity: 0.95,
-
-      emissive: true,
-    },
-
-    planet: {
-      color: 0x60a5fa,
-    },
-
-    moon: {
-      color: 0xcbd5e1,
-    },
-
-    "black-hole": {
-      color: 0x20222a,
-    },
-
-    satellite: {
-      color: 0x67e8f9,
-    },
-
-    debris: {
-      color: 0xfb923c,
-
-      markerOpacity: 0.5,
-    },
-  },
-};
-
-export const CINEMATIC_THEME: UniverseRenderTheme = {
-  id: "cinematic",
-
-  name: "Cinematic",
-
-  background: 0x010205,
-
-  selection: 0xffffff,
-
-  focus: 0x8ce7ff,
-
-  orbit: 0x45687f,
-
-  defaultMarker: 0xb5c9db,
-
-  styles: {
-    star: {
-      color: 0xffd58a,
-
-      markerOpacity: 1,
-
-      markerScale: 1.2,
-
-      emissive: true,
-    },
-
-    planet: {
-      color: 0x4f8edc,
-    },
-
-    moon: {
-      color: 0xb8bdc7,
-    },
-
-    "black-hole": {
-      color: 0x101014,
-
-      bodyOpacity: 1,
-    },
-
-    nebula: {
-      color: 0x8b6ccc,
-
-      markerOpacity: 0.55,
-    },
-
-    galaxy: {
-      color: 0x8ab9ef,
-
-      markerOpacity: 0.7,
-    },
-  },
-};
-
-export class RenderThemeRegistry {
-  private readonly themes = new Map<string, UniverseRenderTheme>();
-
-  private currentId = SCIENTIFIC_THEME.id;
-
-  constructor() {
-    this.register(SCIENTIFIC_THEME);
-
-    this.register(CINEMATIC_THEME);
-  }
-
-  register(theme: UniverseRenderTheme): void {
-    if (!theme.id.trim()) {
-      throw new Error("Theme id cannot be empty.");
-    }
-
-    this.themes.set(theme.id, theme);
-  }
-
-  unregister(id: string): boolean {
-    if (id === this.currentId) {
-      return false;
-    }
-
-    return this.themes.delete(id);
-  }
-
-  use(id: string): UniverseRenderTheme {
-    const theme = this.themes.get(id);
-
-    if (!theme) {
-      throw new Error(`Unknown render theme: ${id}`);
-    }
-
-    this.currentId = id;
-
-    return theme;
-  }
-
-  get current(): UniverseRenderTheme {
-    const theme = this.themes.get(this.currentId);
-
-    if (!theme) {
-      return SCIENTIFIC_THEME;
-    }
-
-    return theme;
-  }
-
-  get(id: string): UniverseRenderTheme | undefined {
-    return this.themes.get(id);
-  }
-
-  all(): UniverseRenderTheme[] {
-    return [...this.themes.values()];
-  }
-}
-
-export function resolvedEntityStyle(
-  entity: SpaceEntity,
-
-  theme: UniverseRenderTheme,
-): EntityVisualStyle {
-  const specific = theme.styles[entity.kind];
-
-  return {
-    color: specific?.color ?? entityDisplayColor(entity.kind).getHex(),
-
-    markerOpacity: specific?.markerOpacity ?? 0.7,
-
-    bodyOpacity: specific?.bodyOpacity ?? 1,
-
-    markerScale: specific?.markerScale ?? 1,
-
-    emissive: specific?.emissive ?? false,
-  };
-}
-
-// CHECKPOINT 10: scene plugins
-
-export interface RendererPluginContext {
-  scene: Scene;
-
-  camera: PerspectiveCamera;
-
-  renderer: WebGLRenderer;
-
-  worldRoot: Group;
-
-  index: EntitySceneIndex;
-
-  events: RenderEventHub;
-}
-
-export interface RendererPlugin {
-  readonly id: string;
-
-  setup(context: RendererPluginContext): void | Promise<void>;
-
-  beforeFrame?(frame: RenderFrame): void;
-
-  afterFrame?(frame: RenderFrame): void;
-
-  resize?(width: number, height: number, pixelRatio: number): void;
-
-  dispose(): void;
-}
-
-interface PluginEntry {
-  plugin: RendererPlugin;
-
-  active: boolean;
-}
-
-export class RendererPluginHost {
-  private readonly plugins = new Map<string, PluginEntry>();
-
-  private context: RendererPluginContext | null = null;
-
-  setContext(context: RendererPluginContext): void {
-    this.context = context;
-  }
-
-  async register(plugin: RendererPlugin): Promise<void> {
-    if (this.plugins.has(plugin.id)) {
-      throw new Error(`Renderer plugin "${plugin.id}" is already registered.`);
-    }
-
-    const entry: PluginEntry = {
-      plugin,
-      active: false,
-    };
-
-    this.plugins.set(plugin.id, entry);
-
-    if (this.context) {
-      await plugin.setup(this.context);
-
-      entry.active = true;
-    }
-  }
-
-  async activateAll(): Promise<void> {
-    const context = this.context;
-
-    if (!context) {
-      return;
-    }
-
-    for (const entry of this.plugins.values()) {
-      if (entry.active) {
-        continue;
-      }
-
-      await entry.plugin.setup(context);
-
-      entry.active = true;
-    }
-  }
-
-  beforeFrame(frame: RenderFrame): void {
-    for (const entry of this.plugins.values()) {
-      if (!entry.active) {
-        continue;
-      }
-
-      entry.plugin.beforeFrame?.(frame);
-    }
-  }
-
-  afterFrame(frame: RenderFrame): void {
-    for (const entry of this.plugins.values()) {
-      if (!entry.active) {
-        continue;
-      }
-
-      entry.plugin.afterFrame?.(frame);
-    }
-  }
-
-  resize(width: number, height: number, pixelRatio: number): void {
-    for (const entry of this.plugins.values()) {
-      if (!entry.active) {
-        continue;
-      }
-
-      entry.plugin.resize?.(width, height, pixelRatio);
-    }
-  }
-
-  remove(id: string): boolean {
-    const entry = this.plugins.get(id);
-
-    if (!entry) {
-      return false;
-    }
-
-    entry.plugin.dispose();
-
-    this.plugins.delete(id);
-
-    return true;
-  }
-
-  dispose(): void {
-    for (const entry of this.plugins.values()) {
-      entry.plugin.dispose();
-    }
-
-    this.plugins.clear();
-
-    this.context = null;
-  }
-
-  get size(): number {
-    return this.plugins.size;
-  }
-}
-
-// CHECKPOINT 11: render snapshots and scene history
-
-export interface SceneSnapshot {
-  timestamp: number;
-
-  selectedId?: EntityId;
-
-  focusId?: EntityId;
-
-  cameraPosition: Vec3;
-
-  cameraFrameId: string;
-
-  fieldOfView: number;
-
-  scaleBand: UniverseState["scale"]["band"];
-
-  metersPerUnit: number;
-
-  visibleEntityIds: readonly EntityId[];
-}
-
-export function createSceneSnapshot(frame: RenderFrame): SceneSnapshot {
-  const snapshot: SceneSnapshot = {
-    timestamp: Date.now(),
-
-    cameraPosition: [...frame.state.camera.position] as Vec3,
-
-    cameraFrameId: frame.state.camera.frameId,
-
-    fieldOfView: frame.state.camera.fieldOfView,
-
-    scaleBand: frame.state.scale.band,
-
-    metersPerUnit: frame.state.scale.metersPerUnit,
-
-    visibleEntityIds: [...frame.visibleEntityIds],
-  };
-
-  if (frame.state.selectedId !== undefined) {
-    snapshot.selectedId = frame.state.selectedId;
-  }
-
-  if (frame.state.focusId !== undefined) {
-    snapshot.focusId = frame.state.focusId;
-  }
-
-  return snapshot;
-}
-
-export class SceneSnapshotHistory {
-  private readonly items: SceneSnapshot[] = [];
-
-  constructor(private readonly maximum = 120) {}
-
-  push(snapshot: SceneSnapshot): void {
-    this.items.push({
-      ...snapshot,
-
-      cameraPosition: [...snapshot.cameraPosition] as Vec3,
-
-      visibleEntityIds: [...snapshot.visibleEntityIds],
-    });
-
-    while (this.items.length > this.maximum) {
-      this.items.shift();
-    }
-  }
-
-  latest(): SceneSnapshot | undefined {
-    const snapshot = this.items[this.items.length - 1];
-
-    if (!snapshot) {
-      return undefined;
-    }
-
-    return {
-      ...snapshot,
-
-      cameraPosition: [...snapshot.cameraPosition] as Vec3,
-
-      visibleEntityIds: [...snapshot.visibleEntityIds],
-    };
-  }
-
-  at(index: number): SceneSnapshot | undefined {
-    const snapshot = this.items[index];
-
-    if (!snapshot) {
-      return undefined;
-    }
-
-    return {
-      ...snapshot,
-
-      cameraPosition: [...snapshot.cameraPosition] as Vec3,
-
-      visibleEntityIds: [...snapshot.visibleEntityIds],
-    };
-  }
-
-  clear(): void {
-    this.items.length = 0;
-  }
-
-  get size(): number {
-    return this.items.length;
-  }
-}
-
-// CHECKPOINT 12: capture helpers
-
-export interface CaptureOptions {
-  type: "image/png" | "image/jpeg" | "image/webp";
-
-  quality: number;
-}
-
-export const DEFAULT_CAPTURE_OPTIONS: CaptureOptions = {
-  type: "image/png",
-
-  quality: 0.92,
-};
-
-export class SceneCapture {
-  constructor(private readonly renderer: WebGLRenderer) {}
-
-  dataUrl(options: Partial<CaptureOptions> = {}): string {
-    const config = {
-      ...DEFAULT_CAPTURE_OPTIONS,
-      ...options,
-    };
-
-    return this.renderer.domElement.toDataURL(
-      config.type,
-      clamp(config.quality, 0, 1),
     );
-  }
 
-  async blob(options: Partial<CaptureOptions> = {}): Promise<Blob | null> {
-    const config = {
-      ...DEFAULT_CAPTURE_OPTIONS,
-      ...options,
-    };
 
-    return new Promise((resolve) => {
-      this.renderer.domElement.toBlob(
-        (blob: Blob | null) => {
-          resolve(blob);
-        },
 
-        config.type,
+    this.syncCamera(
 
-        clamp(config.quality, 0, 1),
-      );
-    });
-  }
-}
+      frame,
 
-// CHECKPOINT 13: entity hover and tooltip data
+    );
 
-export interface EntityTooltipData {
-  id: EntityId;
 
-  name: string;
 
-  kind: EntityKind;
+    this.syncLabels(
 
-  summary?: string;
+      frame,
 
-  radiusMeters?: number;
+    );
 
-  sourceCount: number;
-}
 
-export function tooltipDataFor(entity: SpaceEntity): EntityTooltipData {
-  const data: EntityTooltipData = {
-    id: entity.id,
 
-    name: entity.name,
+    renderer.render(
 
-    kind: entity.kind,
-
-    sourceCount: entity.sourceIds.length,
-  };
-
-  if (entity.summary !== undefined) {
-    data.summary = entity.summary;
-  }
-
-  const radius = entityRadiusMeters(entity);
-
-  if (radius !== null) {
-    data.radiusMeters = radius;
-  }
-
-  return data;
-}
-
-export class HoverTooltip {
-  readonly element: HTMLDivElement;
-
-  private visible = false;
-
-  constructor(parent: HTMLElement) {
-    this.element = document.createElement("div");
-
-    Object.assign(this.element.style, {
-      position: "absolute",
-
-      left: "0",
-
-      top: "0",
-
-      display: "none",
-
-      maxWidth: "280px",
-
-      padding: "8px 10px",
-
-      borderRadius: "8px",
-
-      background: "rgba(6,10,20,.92)",
-
-      border: "1px solid rgba(255,255,255,.12)",
-
-      color: "#f7f8ff",
-
-      fontFamily: "Inter, system-ui, sans-serif",
-
-      fontSize: "12px",
-
-      lineHeight: "1.4",
-
-      pointerEvents: "none",
-
-      zIndex: "1000",
-
-      backdropFilter: "blur(8px)",
-
-      transform: "translate(12px, 12px)",
-    });
-
-    parent.appendChild(this.element);
-  }
-
-  show(
-    data: EntityTooltipData,
-
-    x: number,
-    y: number,
-  ): void {
-    this.element.textContent = `${data.name} Â· ${data.kind}`;
-
-    this.element.style.left = `${x}px`;
-
-    this.element.style.top = `${y}px`;
-
-    this.element.style.display = "block";
-
-    this.visible = true;
-  }
-
-  move(x: number, y: number): void {
-    if (!this.visible) {
-      return;
-    }
-
-    this.element.style.left = `${x}px`;
-
-    this.element.style.top = `${y}px`;
-  }
-
-  hide(): void {
-    this.element.style.display = "none";
-
-    this.visible = false;
-  }
-
-  dispose(): void {
-    this.element.remove();
-
-    this.visible = false;
-  }
-}
-
-// CHECKPOINT 14: render extension facade
-
-export interface UniverseRendererExtensionOptions {
-  labels?: boolean;
-
-  tooltips?: boolean;
-
-  adaptiveQuality?: boolean;
-
-  interaction?: boolean;
-
-  snapshotHistory?: boolean;
-}
-
-export const DEFAULT_EXTENSION_OPTIONS: Required<UniverseRendererExtensionOptions> =
-  {
-    labels: true,
-
-    tooltips: true,
-
-    adaptiveQuality: true,
-
-    interaction: true,
-
-    snapshotHistory: true,
-  };
-
-export class UniverseRendererExtensions {
-  readonly events = new RenderEventHub();
-
-  readonly selection = new SceneSelectionModel();
-
-  readonly themes = new RenderThemeRegistry();
-
-  readonly quality = new AdaptiveRenderQuality();
-
-  readonly tasks = new RenderTaskQueue();
-
-  readonly diagnostics = new RenderDiagnostics();
-
-  readonly snapshots = new SceneSnapshotHistory();
-
-  readonly bookmarks = new CameraBookmarkStore();
-
-  readonly cameraTransitions = new CameraTransitionController();
-
-  readonly plugins = new RendererPluginHost();
-
-  readonly denseLayers = new DenseLayerManager();
-
-  readonly visibility = new EntityVisibilityPolicy();
-
-  private readonly options: Required<UniverseRendererExtensionOptions>;
-
-  private labels: DomLabelLayer | null = null;
-
-  private tooltip: HoverTooltip | null = null;
-
-  private pointer: PointerInteractionController | null = null;
-
-  private capture: SceneCapture | null = null;
-
-  private frameTimer = new FrameTimer();
-
-  private container: HTMLElement | null = null;
-
-  private renderer: WebGLRenderer | null = null;
-
-  private camera: PerspectiveCamera | null = null;
-
-  private index: EntitySceneIndex | null = null;
-
-  private width = 1;
-  private height = 1;
-
-  constructor(options: UniverseRendererExtensionOptions = {}) {
-    this.options = {
-      labels: options.labels ?? DEFAULT_EXTENSION_OPTIONS.labels,
-
-      tooltips: options.tooltips ?? DEFAULT_EXTENSION_OPTIONS.tooltips,
-
-      adaptiveQuality:
-        options.adaptiveQuality ?? DEFAULT_EXTENSION_OPTIONS.adaptiveQuality,
-
-      interaction: options.interaction ?? DEFAULT_EXTENSION_OPTIONS.interaction,
-
-      snapshotHistory:
-        options.snapshotHistory ?? DEFAULT_EXTENSION_OPTIONS.snapshotHistory,
-    };
-  }
-
-  initialize(
-    container: HTMLElement,
-
-    renderer: WebGLRenderer,
-
-    camera: PerspectiveCamera,
-
-    worldRoot: Group,
-
-    index: EntitySceneIndex,
-
-    picking: PickingController,
-  ): void {
-    if (this.container) {
-      throw new Error("Renderer extensions are already initialized.");
-    }
-
-    this.container = container;
-
-    this.renderer = renderer;
-
-    this.camera = camera;
-
-    this.index = index;
-
-    this.capture = new SceneCapture(renderer);
-
-    worldRoot.add(this.denseLayers.root);
-
-    if (this.options.labels) {
-      this.labels = new DomLabelLayer(container);
-    }
-
-    if (this.options.tooltips) {
-      this.tooltip = new HoverTooltip(container);
-    }
-
-    if (this.options.interaction) {
-      this.pointer = new PointerInteractionController(
-        renderer.domElement,
-
-        picking,
-
-        this.events,
-      );
-
-      this.pointer.attach();
-    }
-
-    this.plugins.setContext({
-      scene: worldRoot.parent instanceof Scene ? worldRoot.parent : new Scene(),
+      scene,
 
       camera,
 
-      renderer,
-
-      worldRoot,
-
-      index,
-
-      events: this.events,
-    });
-
-    this.bindDefaultEvents();
-  }
-
-  private bindDefaultEvents(): void {
-    this.events.on("entity.select", (event) => {
-      this.selection.setSelected(event.entityId);
-    });
-
-    this.events.on("entity.focus", (event) => {
-      this.selection.setFocused(event.entityId);
-    });
-
-    this.events.on("entity.hover", (event) => {
-      this.selection.setHovered(event.entityId);
-
-      const index = this.index;
-
-      const last = this.lastFrame;
-
-      if (!index || !last || !this.tooltip) {
-        return;
-      }
-
-      const entity = last.state.entities.get(event.entityId);
-
-      if (!entity) {
-        return;
-      }
-
-      this.tooltip.show(
-        tooltipDataFor(entity),
-
-        event.x,
-
-        event.y,
-      );
-    });
-
-    this.events.on("entity.leave", (event) => {
-      const snapshot = this.selection.getSnapshot();
-
-      if (snapshot.hoveredId === event.entityId) {
-        this.selection.setHovered(null);
-      }
-
-      this.tooltip?.hide();
-    });
-
-    this.events.on("scene.click", () => {
-      this.selection.setSelected(null);
-
-      this.tooltip?.hide();
-    });
-  }
-
-  private lastFrame: RenderFrame | null = null;
-
-  beforeFrame(frame: RenderFrame): void {
-    this.lastFrame = frame;
-
-    this.frameTimer.begin();
-
-    this.events.emit("frame.before", {
-      deltaSeconds: frame.deltaSeconds,
-    });
-
-    this.plugins.beforeFrame(frame);
-  }
-
-  afterEntitySync(): void {
-    this.frameTimer.markSync();
-  }
-
-  syncLabels(frame: RenderFrame): void {
-    if (!this.labels || !this.camera || !this.index) {
-      this.frameTimer.markLabels();
-
-      return;
-    }
-
-    const profile = this.quality.profile;
-
-    this.labels.setStyle({
-      maximumLabels: profile.maximumLabels,
-    });
-
-    this.labels.sync(
-      frame.state,
-      this.index,
-      this.camera,
-      this.width,
-      this.height,
     );
 
-    this.frameTimer.markLabels();
+
+
+    this.updateStats(
+
+      performance.now() -
+
+        started,
+
+    );
+
   }
 
-  markRendered(): void {
-    this.frameTimer.markRender();
-  }
 
-  async runTasks(budgetMs: number): Promise<void> {
-    await this.tasks.runBudget(budgetMs);
 
-    this.frameTimer.markTasks();
-  }
+  resize(
 
-  endFrame(
-    frame: RenderFrame,
+    width: number,
 
-    stats: RendererStats,
+    height: number,
+
+    pixelRatio: number,
+
   ): void {
-    const timing = this.frameTimer.finish();
 
-    if (this.options.adaptiveQuality) {
-      const before = this.quality.currentLevel;
+    const renderer =
 
-      const profile = this.quality.pushFrame(timing.totalMs);
+      this.rendererValue;
 
-      const after = this.quality.currentLevel;
 
-      if (before !== after) {
-        this.denseLayers.applyQuality(profile);
 
-        this.events.emit("quality.change", {
-          level: after,
-        });
-      }
+    const camera =
+
+      this.cameraValue;
+
+
+
+    if (
+
+      !renderer ||
+
+      !camera
+
+    ) {
+
+      return;
+
     }
 
-    if (this.options.snapshotHistory) {
-      this.snapshots.push(createSceneSnapshot(frame));
-    }
 
-    this.diagnostics.push({
-      timestamp: performance.now(),
 
-      frame: timing,
+    const safeWidth =
 
-      renderer: stats,
+      Math.max(
 
-      labelCount: this.labels?.visibleCount ?? 0,
+        1,
 
-      taskCount: this.tasks.size,
-    });
+        Math.floor(width),
 
-    this.plugins.afterFrame(frame);
+      );
 
-    this.events.emit("frame.after", {
-      deltaSeconds: frame.deltaSeconds,
 
-      drawCalls: stats.drawCalls,
-    });
+
+    const safeHeight =
+
+      Math.max(
+
+        1,
+
+        Math.floor(height),
+
+      );
+
+
+
+    renderer.setPixelRatio(
+
+      clamp(
+
+        pixelRatio,
+
+        0.75,
+
+        2,
+
+      ),
+
+    );
+
+
+
+    renderer.setSize(
+
+      safeWidth,
+
+      safeHeight,
+
+      false,
+
+    );
+
+
+
+    camera.aspect =
+
+      safeWidth /
+
+      safeHeight;
+
+
+
+    camera.updateProjectionMatrix();
+
   }
 
-  resize(width: number, height: number, pixelRatio: number): void {
-    this.width = Math.max(1, width);
 
-    this.height = Math.max(1, height);
 
-    this.plugins.resize(this.width, this.height, pixelRatio);
+  setFrameTransformProvider(
+
+    provider:
+
+      FrameTransformProvider |
+
+      null,
+
+  ): void {
+
+    this.frameSpace.setTransformProvider(
+
+      provider,
+
+    );
+
   }
 
-  createStarLayer(records: readonly DensePointRecord[]): DenseCatalogLayer {
-    const layer = this.denseLayers.create("stars");
 
-    layer.replace(records);
 
-    return layer;
-  }
+  getStats(): RendererStats {
 
-  createDebrisLayer(records: readonly DensePointRecord[]): DenseCatalogLayer {
-    const layer = this.denseLayers.create("debris");
-
-    layer.replace(records);
-
-    return layer;
-  }
-
-  captureDataUrl(options: Partial<CaptureOptions> = {}): string | null {
-    return this.capture?.dataUrl(options) ?? null;
-  }
-
-  captureBlob(options: Partial<CaptureOptions> = {}): Promise<Blob | null> {
-    if (!this.capture) {
-      return Promise.resolve(null);
-    }
-
-    return this.capture.blob(options);
-  }
-
-  dispose(): void {
-    this.pointer?.detach();
-
-    this.pointer = null;
-
-    this.labels?.dispose();
-
-    this.labels = null;
-
-    this.tooltip?.dispose();
-
-    this.tooltip = null;
-
-    this.plugins.dispose();
-
-    this.denseLayers.dispose();
-
-    this.events.clear();
-
-    this.selection.clear();
-
-    this.tasks.clear();
-
-    this.diagnostics.clear();
-
-    this.snapshots.clear();
-
-    this.bookmarks.clear();
-
-    this.cameraTransitions.cancel();
-
-    this.capture = null;
-
-    this.container = null;
-
-    this.renderer = null;
-
-    this.camera = null;
-
-    this.index = null;
-
-    this.lastFrame = null;
-  }
-}
-
-// CHECKPOINT 15: renderer session controller
-
-export interface UniverseRenderSessionOptions {
-  entityFilter?: Partial<EntityRenderFilter>;
-
-  extensions?: UniverseRendererExtensionOptions;
-
-  targetFps?: number;
-}
-
-export class UniverseRenderSession {
-  readonly extensions: UniverseRendererExtensions;
-
-  private readonly visibility = new EntityVisibilityPolicy();
-
-  private filter: EntityRenderFilter;
-
-  private targetFps: number;
-
-  private active = true;
-
-  constructor(options: UniverseRenderSessionOptions = {}) {
-    this.extensions = new UniverseRendererExtensions(options.extensions);
-
-    this.filter = {
-      ...DEFAULT_ENTITY_FILTER,
-      ...options.entityFilter,
-    };
-
-    this.targetFps = clamp(options.targetFps ?? 60, 15, 240);
-  }
-
-  setFilter(filter: Partial<EntityRenderFilter>): void {
-    this.filter = {
-      ...this.filter,
-      ...filter,
-    };
-  }
-
-  getFilter(): EntityRenderFilter {
     return {
-      ...this.filter,
+
+      ...this.stats,
+
     };
+
   }
 
-  visibleEntities(
-    state: UniverseState,
 
-    cameraPosition: Vector3,
-  ): VisibilityResult {
-    return this.visibility.select({
-      state,
 
-      cameraPosition,
+  get camera():
 
-      maximumObjects: state.settings.graphics.maxVisibleObjects,
+    PerspectiveCamera | null {
 
-      filter: this.filter,
-    });
+    return this.cameraValue;
+
   }
 
-  frameBudget(): FrameBudget {
-    return createFrameBudget(this.targetFps);
+
+
+  get scene():
+
+    Scene | null {
+
+    return this.sceneValue;
+
   }
 
-  setTargetFps(value: number): void {
-    this.targetFps = clamp(value, 15, 240);
+
+
+  get threeRenderer():
+
+    WebGLRenderer | null {
+
+    return this.rendererValue;
+
   }
 
-  pause(): void {
-    this.active = false;
-  }
 
-  resume(): void {
-    this.active = true;
-  }
-
-  get isActive(): boolean {
-    return this.active;
-  }
 
   dispose(): void {
-    this.active = false;
 
-    this.extensions.dispose();
+    for (
+
+      const id of [
+
+        ...this.index.keys(),
+
+      ]
+
+    ) {
+
+      this.removeEntry(
+
+        id,
+
+      );
+
+    }
+
+
+
+    for (
+
+      const id of [
+
+        ...this.orbitEntries.keys(),
+
+      ]
+
+    ) {
+
+      this.removeOrbit(
+
+        id,
+
+      );
+
+    }
+
+
+
+    this.picking.dispose();
+
+
+
+    this.sphere.dispose();
+
+
+
+    if (this.starfield) {
+
+      this.starfield.geometry.dispose();
+
+
+
+      disposeMaterial(
+
+        this.starfield.material,
+
+      );
+
+
+
+      this.starfield.removeFromParent();
+
+
+
+      this.starfield =
+
+        null;
+
+    }
+
+
+
+    this.labelLayer?.remove();
+
+
+
+    this.labelLayer =
+
+      null;
+
+
+
+    this.rendererValue
+
+      ?.domElement.remove();
+
+
+
+    this.rendererValue?.dispose();
+
+
+
+    this.sceneValue?.clear();
+
+
+
+    this.rendererValue =
+
+      null;
+
+
+
+    this.cameraValue =
+
+      null;
+
+
+
+    this.sceneValue =
+
+      null;
+
+
+
+    this.ambientLight =
+
+      null;
+
+
+
+    this.sunLight =
+
+      null;
+
+
+
+    this.container =
+
+      null;
+
   }
+
 }
-
-// CHECKPOINT 16: lightweight render command bus
-
-export type RenderCommand =
-  | {
-      type: "select";
-
-      entityId: EntityId;
-    }
-  | {
-      type: "focus";
-
-      entityId: EntityId;
-    }
-  | {
-      type: "clearSelection";
-    }
-  | {
-      type: "theme";
-
-      themeId: string;
-    }
-  | {
-      type: "quality";
-
-      level: RenderQualityLevel;
-    }
-  | {
-      type: "labels";
-
-      enabled: boolean;
-    }
-  | {
-      type: "filter";
-
-      filter: Partial<EntityRenderFilter>;
-    };
-
-export type RenderCommandHandler = (command: RenderCommand) => void;
-
-export class RenderCommandBus {
-  private readonly handlers = new Set<RenderCommandHandler>();
-
-  subscribe(handler: RenderCommandHandler): () => void {
-    this.handlers.add(handler);
-
-    return () => {
-      this.handlers.delete(handler);
-    };
-  }
-
-  dispatch(command: RenderCommand): void {
-    for (const handler of this.handlers) {
-      handler(command);
-    }
-  }
-
-  clear(): void {
-    this.handlers.clear();
-  }
-}
-
-// CHECKPOINT 17: renderer orchestration bridge
-
-export interface RenderBridgeOptions {
-  session?: UniverseRenderSessionOptions;
-}
-
-export class UniverseRenderBridge {
-  readonly session: UniverseRenderSession;
-
-  readonly commands = new RenderCommandBus();
-
-  private unsubscribe: (() => void) | null = null;
-
-  constructor(options: RenderBridgeOptions = {}) {
-    this.session = new UniverseRenderSession(options.session);
-
-    this.unsubscribe = this.commands.subscribe((command) => {
-      this.handleCommand(command);
-    });
-  }
-
-  private handleCommand(command: RenderCommand): void {
-    const extensions = this.session.extensions;
-
-    switch (command.type) {
-      case "select":
-        extensions.selection.setSelected(command.entityId);
-
-        break;
-
-      case "focus":
-        extensions.selection.setFocused(command.entityId);
-
-        break;
-
-      case "clearSelection":
-        extensions.selection.setSelected(null);
-
-        break;
-
-      case "theme":
-        extensions.themes.use(command.themeId);
-
-        break;
-
-      case "quality":
-        extensions.quality.setLevel(command.level);
-
-        extensions.denseLayers.applyQuality(extensions.quality.profile);
-
-        break;
-
-      case "labels":
-        break;
-
-      case "filter":
-        this.session.setFilter(command.filter);
-
-        break;
-    }
-  }
-
-  dispose(): void {
-    this.unsubscribe?.();
-
-    this.unsubscribe = null;
-
-    this.commands.clear();
-
-    this.session.dispose();
-  }
-}
-
-// CHECKPOINT 18: renderer development diagnostics
-
-export interface RendererDebugState {
-  renderer: RendererStats;
-
-  diagnostics: DiagnosticSummary;
-
-  quality: RenderQualityLevel;
-
-  plugins: number;
-
-  denseLayers: number;
-
-  bookmarks: number;
-
-  snapshots: number;
-
-  listeners: number;
-}
-
-export function rendererDebugState(
-  renderer: ThreeUniverseRenderer,
-
-  extensions: UniverseRendererExtensions,
-): RendererDebugState {
-  return {
-    renderer: renderer.getStats(),
-
-    diagnostics: extensions.diagnostics.summary(),
-
-    quality: extensions.quality.currentLevel,
-
-    plugins: extensions.plugins.size,
-
-    denseLayers: extensions.denseLayers.count,
-
-    bookmarks: extensions.bookmarks.size,
-
-    snapshots: extensions.snapshots.size,
-
-    listeners: extensions.events.listenerCount(),
-  };
-}
-
-export function formatRendererDebugState(state: RendererDebugState): string {
-  const renderer = state.renderer;
-
-  const diagnostics = state.diagnostics;
-
-  const lines = [
-    `Renderer: ${rendererInfo.backend} r${rendererInfo.revision}`,
-
-    `Visible: ${renderer.visibleEntities}`,
-
-    `Objects: ${renderer.sceneObjects}`,
-
-    `Draw calls: ${renderer.drawCalls}`,
-
-    `Triangles: ${renderer.triangles}`,
-
-    `Points: ${renderer.points}`,
-
-    `Lines: ${renderer.lines}`,
-
-    `Average FPS: ${diagnostics.averageFps.toFixed(1)}`,
-
-    `Average frame: ${diagnostics.averageFrameMs.toFixed(2)} ms`,
-
-    `Quality: ${state.quality}`,
-
-    `Plugins: ${state.plugins}`,
-
-    `Dense layers: ${state.denseLayers}`,
-
-    `Bookmarks: ${state.bookmarks}`,
-
-    `Snapshots: ${state.snapshots}`,
-
-    `Event listeners: ${state.listeners}`,
-  ];
-
-  return lines.join("\n");
-}
-
-// CHECKPOINT 19: stable public renderer API description
-
-export interface RendererFeatureSupport {
-  floatingOrigin: boolean;
-
-  hierarchicalFrames: boolean;
-
-  picking: boolean;
-
-  orbitRendering: boolean;
-
-  packedPointLayers: boolean;
-
-  labels: boolean;
-
-  tooltips: boolean;
-
-  themes: boolean;
-
-  adaptiveQuality: boolean;
-
-  bookmarks: boolean;
-
-  diagnostics: boolean;
-
-  plugins: boolean;
-
-  screenshotCapture: boolean;
-}
-
-export const rendererFeatures: RendererFeatureSupport = {
-  floatingOrigin: true,
-
-  hierarchicalFrames: true,
-
-  picking: true,
-
-  orbitRendering: true,
-
-  packedPointLayers: true,
-
-  labels: true,
-
-  tooltips: true,
-
-  themes: true,
-
-  adaptiveQuality: true,
-
-  bookmarks: true,
-
-  diagnostics: true,
-
-  plugins: true,
-
-  screenshotCapture: true,
-};
-
-export const RENDERER_EXTENSION_VERSION = 1;
