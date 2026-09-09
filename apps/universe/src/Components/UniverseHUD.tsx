@@ -2865,8 +2865,11 @@ function Inspector({
               type="button"
               className="hud-action-button"
               onClick={() => onCompareScale?.()}
+              aria-label="Compare scale"
+              title="Compare scale"
             >
-              Compare
+              <Icon name="compare" size={15} strokeWidth={1.5} />
+              <span className="hud-action-tooltip">Compare Scale</span>
             </button>
           </div>
 
