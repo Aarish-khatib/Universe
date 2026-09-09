@@ -1437,6 +1437,7 @@ function App() {
     window.dispatchEvent(
       new CustomEvent(
         "universe:compare-scale",
+        { detail: { fromBand: scaleBandFor(1), toBand: scaleBandFor(5) } }
       ),
     );
   };
