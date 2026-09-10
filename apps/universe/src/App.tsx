@@ -46,7 +46,12 @@ import {
   UniverseHUD,
 } from "./Components/UniverseHUD";
 
-import SettingsPanel from "./Components/SettingsPanel";
+import SettingsPanel, {
+  DEFAULT_SETTINGS as DEFAULT_UI_SETTINGS,
+} from "./Components/SettingsPanel";
+import type {
+  UniverseSettings as UniverseUiSettings,
+} from "./Components/SettingsPanel";
 
 import "./App.css";
 
@@ -659,6 +664,16 @@ function App() {
     >(
       "explore",
     );
+  const [
+    isSettingsOpen,
+    setIsSettingsOpen,
+  ] = useState(false);
+  const [
+    uiSettings,
+    setUiSettings,
+  ] = useState<UniverseUiSettings>(
+    DEFAULT_UI_SETTINGS,
+  );
 
   const [boot, setBoot] =
     useState<BootState>(
@@ -1416,10 +1431,10 @@ function App() {
   };
 
   const openSettings = () => {
-      setMode(
-        "science",
-      );
-    };
+    setIsSettingsOpen(
+      true,
+    );
+  };
 
   const discoveryMode = () => {
     window.dispatchEvent(
@@ -2737,6 +2752,10 @@ function App() {
                 "keyup",
                 handleKeyUp,
               );
+              window.removeEventListener(
+                "universe:open-settings",
+                openSettings,
+              );
 
               cancelAnimationFrame(
                 movementFrame,
@@ -2962,28 +2981,30 @@ function App() {
     "Scientific object in the currently loaded universe.";
 
   const rendererPerformance =
-    {
-      fps:
-        stats.frameMs >
-        0
-          ? 1_000 /
-            stats.frameMs
-          : 0,
+    uiSettings.showFps
+      ? {
+          fps:
+            stats.frameMs >
+            0
+              ? 1_000 /
+                stats.frameMs
+              : 0,
 
-      frameMs:
-        stats.frameMs,
+          frameMs:
+            stats.frameMs,
 
-      visibleObjects:
-        stats.visibleEntities,
+          visibleObjects:
+            stats.visibleEntities,
 
-      drawCalls:
-        stats.drawCalls,
+          drawCalls:
+            stats.drawCalls,
 
-      quality:
-        state.settings
-          .graphics
-          .preset,
-    };
+          quality:
+            state.settings
+              .graphics
+              .preset,
+        }
+      : undefined;
 
   return (
     <main
@@ -3006,15 +3027,93 @@ function App() {
         ref={viewportRef}
         aria-label="Three dimensional universe viewport"
       />
-      {mode === "science" && (
-              <SettingsPanel
-                isOpen={true}
-                onClose={() => setMode("explore")}
-                onSettingsChange={(settings) => {
-                  // Handle settings change if needed
-                }}
-              />
-            )}
+      <SettingsPanel
+        isOpen={isSettingsOpen}
+        value={uiSettings}
+        onClose={() =>
+          setIsSettingsOpen(
+            false,
+          )
+        }
+        onSettingsChange={(
+          settings,
+        ) => {
+          setUiSettings(
+            settings,
+          );
+          const runtime =
+            runtimeRef.current;
+          if (!runtime) {
+            return;
+          }
+
+          runtime.store.updateSettings(
+            (current) => ({
+              ...current,
+              graphics: {
+                ...current.graphics,
+                preset:
+                  settings.graphicsPreset,
+                maxVisibleObjects:
+                  settings.maxEntities,
+                starDensity:
+                  clamp(
+                    settings.proceduralDensity,
+                    0.1,
+                    3,
+                  ),
+                atmosphere:
+                  settings
+                    .enablePostProcessing,
+                bloom:
+                  settings
+                    .enablePostProcessing,
+              },
+              accessibility: {
+                ...current.accessibility,
+                discoveryOverlay:
+                  settings.uiMode ===
+                  "immersion",
+              },
+            }),
+          );
+
+          runtime.store.setOverlays(
+            {
+              ...runtime.store.getSnapshot()
+                .overlays,
+              labels:
+                settings.showCoordinates,
+            },
+          );
+
+          const renderScaleBand:
+            ScaleBand =
+            settings.renderScale ===
+            "meters"
+              ? "surface"
+              : settings.renderScale ===
+                  "au"
+                ? "planet"
+                : "galactic";
+          setScaleBand(
+            renderScaleBand,
+          );
+          setMode(
+            settings.uiMode ===
+              "telemetry"
+              ? "science"
+              : "explore",
+          );
+          if (
+            !settings.timeDilation
+          ) {
+            pauseChange(false);
+            clockRateChange(1);
+          }
+          refresh();
+        }}
+      />
       <div className="ambient-overlay" />
 
       <UniverseHUD
@@ -3078,7 +3177,9 @@ function App() {
           locationLabel
         }
         coordinateLabel={
-          coordinateLabel
+          uiSettings.showCoordinates
+            ? coordinateLabel
+            : undefined
         }
         temporalLabel={
           temporalLabel

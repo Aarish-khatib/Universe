@@ -3,10 +3,11 @@ import React, { useEffect, useState } from "react";
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  onSettingsChange?: (settings: Partial<UserSettings>) => void;
+  value?: UniverseSettings;
+  onSettingsChange?: (settings: UniverseSettings) => void;
 }
 
-interface UserSettings {
+export interface UniverseSettings {
   timeDilation: boolean;
   physicsRigor: "hard" | "speculative";
   uiMode: "telemetry" | "immersion";
@@ -24,7 +25,7 @@ interface UserSettings {
   sfxVolume: number;
 }
 
-const DEFAULT_SETTINGS: UserSettings = {
+export const DEFAULT_SETTINGS: UniverseSettings = {
   timeDilation: true,
   physicsRigor: "hard",
   uiMode: "telemetry",
@@ -42,35 +43,51 @@ const DEFAULT_SETTINGS: UserSettings = {
   sfxVolume: 0.7,
 };
 
+type SettingsTab = "simulation" | "graphics" | "audio" | "controls";
+
 function SettingsPanel({
   isOpen,
   onClose,
+  value,
   onSettingsChange,
 }: SettingsPanelProps): React.ReactElement | null {
-  if (!isOpen) return null;
-
-  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<UniverseSettings>(
+    value ?? DEFAULT_SETTINGS,
+  );
+  const [activeTab, setActiveTab] = useState<SettingsTab>("simulation");
 
   const handleChange = (
-    key: keyof UserSettings,
+    key: keyof UniverseSettings,
     value: boolean | number | string
   ) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
-    onSettingsChange?.({ [key]: value });
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
   };
 
   useEffect(() => {
+    if (isOpen) {
+      setSettings(value ?? DEFAULT_SETTINGS);
+      setActiveTab("simulation");
+    }
+  }, [isOpen, value]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
     document.addEventListener("keydown", handleKeyDown);
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
     };
-  }, []);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -94,33 +111,41 @@ function SettingsPanel({
 
         <div className="settings-tabs">
           <button
-            className="settings-tab active"
+            className={`settings-tab ${activeTab === "simulation" ? "active" : ""}`}
             data-tab="simulation"
+            type="button"
+            onClick={() => setActiveTab("simulation")}
           >
             Simulation
           </button>
           <button
-            className="settings-tab"
+            className={`settings-tab ${activeTab === "graphics" ? "active" : ""}`}
             data-tab="graphics"
+            type="button"
+            onClick={() => setActiveTab("graphics")}
           >
             Graphics
           </button>
           <button
-            className="settings-tab"
+            className={`settings-tab ${activeTab === "audio" ? "active" : ""}`}
             data-tab="audio"
+            type="button"
+            onClick={() => setActiveTab("audio")}
           >
             Audio
           </button>
           <button
-            className="settings-tab"
+            className={`settings-tab ${activeTab === "controls" ? "active" : ""}`}
             data-tab="controls"
+            type="button"
+            onClick={() => setActiveTab("controls")}
           >
             Controls
           </button>
         </div>
 
         <div className="settings-content">
-          <div className="settings-pane active" data-pane="simulation">
+          <div className={`settings-pane ${activeTab === "simulation" ? "active" : ""}`} data-pane="simulation">
             <section className="settings-section">
               <h3>Physics & Time</h3>
               <div className="setting-row">
@@ -227,7 +252,7 @@ function SettingsPanel({
             </section>
           </div>
 
-          <div className="settings-pane" data-pane="graphics">
+          <div className={`settings-pane ${activeTab === "graphics" ? "active" : ""}`} data-pane="graphics">
             <section className="settings-section">
               <h3>Visual Quality</h3>
               <div className="setting-row">
@@ -295,7 +320,7 @@ function SettingsPanel({
             </section>
           </div>
 
-          <div className="settings-pane" data-pane="audio">
+          <div className={`settings-pane ${activeTab === "audio" ? "active" : ""}`} data-pane="audio">
             <section className="settings-section">
               <h3>Audio Settings</h3>
               <div className="setting-row">
@@ -339,7 +364,7 @@ function SettingsPanel({
             </section>
           </div>
 
-          <div className="settings-pane" data-pane="controls">
+          <div className={`settings-pane ${activeTab === "controls" ? "active" : ""}`} data-pane="controls">
             <section className="settings-section">
               <h3>Key Bindings</h3>
               <div className="keybindings">
