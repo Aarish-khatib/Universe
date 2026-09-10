@@ -63,6 +63,45 @@ export type LifePotential =
   | "moderate"
   | "high";
 
+export type TerrainBiome =
+  | "ocean"
+  | "coast"
+  | "rainforest"
+  | "forest"
+  | "grassland"
+  | "savanna"
+  | "desert"
+  | "tundra"
+  | "ice"
+  | "volcanic"
+  | "highland"
+  | "cratered"
+  | "sterile";
+
+export interface TerrainTileAddress {
+  face: number;
+  x: number;
+  y: number;
+  lod: number;
+}
+
+export interface TerrainTile {
+  kind: "terrain-tile";
+  realityClass: "procedural";
+  generationVersion: number;
+  seedKey: string;
+  planetId: EntityId;
+  address: TerrainTileAddress;
+  resolution: number;
+  elevations: Float32Array;
+  temperaturesK: Float32Array;
+  moistures: Float32Array;
+  biomes: readonly TerrainBiome[];
+  waterFraction: number;
+  cloudCover: number;
+  weatherActivity: number;
+}
+
 export interface SectorCoordinate {
   x: number;
   y: number;
@@ -3726,6 +3765,98 @@ function planetaryOrbits(
   return output;
 }
 
+function hashToUnit(value: number): number {
+  return mixHash32(value) / 0x1_0000_0000;
+}
+
+function valueNoise2D(seed: number, x: number, y: number): number {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const tx = x - x0;
+  const ty = y - y0;
+  const sx = tx * tx * (3 - 2 * tx);
+  const sy = ty * ty * (3 - 2 * ty);
+  const corner = (offsetX: number, offsetY: number): number =>
+    hashToUnit(combineHash32(seed, x0 + offsetX, y0 + offsetY)) * 2 - 1;
+  return lerp(
+    lerp(corner(0, 0), corner(1, 0), sx),
+    lerp(corner(0, 1), corner(1, 1), sx),
+    sy,
+  );
+}
+
+function fractalSurfaceNoise(seed: number, x: number, y: number): number {
+  let amplitude = 0.5;
+  let frequency = 1;
+  let total = 0;
+  let normalization = 0;
+  for (let octave = 0; octave < 5; octave++) {
+    total += valueNoise2D(seed + octave * 0x45d9f3b, x * frequency, y * frequency) * amplitude;
+    normalization += amplitude;
+    amplitude *= 0.5;
+    frequency *= 2.03;
+  }
+  return total / normalization;
+}
+
+function terrainDirection(face: number, u: number, v: number): Vec3 {
+  const direction: Vec3 = (() => {
+    switch (face % 6) {
+      case 0: return [1, v, -u];
+      case 1: return [-1, v, u];
+      case 2: return [u, 1, -v];
+      case 3: return [u, -1, v];
+      case 4: return [u, v, 1];
+      default: return [-u, v, -1];
+    }
+  })();
+  const magnitude = Math.sqrt(direction[0] ** 2 + direction[1] ** 2 + direction[2] ** 2);
+  return [direction[0] / magnitude, direction[1] / magnitude, direction[2] / magnitude];
+}
+
+function classifyTerrainBiome(
+  planet: PlanetDescriptor,
+  temperatureK: number,
+  moisture: number,
+  elevation: number,
+): TerrainBiome {
+  if (planet.planetClass === "lava" || temperatureK > 700) return "volcanic";
+  if (planet.planetClass === "gas-giant" || planet.planetClass === "ice-giant") return "sterile";
+  if (elevation < -0.18) return temperatureK < 245 ? "ice" : "ocean";
+  if (temperatureK < 210) return "ice";
+  if (temperatureK < 260) return elevation > 0.45 ? "tundra" : "ice";
+  if (elevation > 0.62) return "highland";
+  if (moisture < 0.16) return "desert";
+  if (moisture > 0.78 && temperatureK > 285) return "rainforest";
+  if (moisture > 0.56) return "forest";
+  if (moisture > 0.32) return temperatureK > 300 ? "savanna" : "grassland";
+  return elevation < 0 ? "coast" : "cratered";
+}
+
+function terrainSample(
+  planet: PlanetDescriptor,
+  seed: ProceduralSeed,
+  face: number,
+  u: number,
+  v: number,
+): { elevation: number; temperatureK: number; moisture: number; biome: TerrainBiome } {
+  const direction = terrainDirection(face, u, v);
+  const latitude = Math.asin(direction[1]);
+  const longitude = Math.atan2(direction[2], direction[0]);
+  const surfaceSeed = combineHash32(seed.words[0], hashString32(planet.id));
+  const x = (longitude / (Math.PI * 2) + 0.5) * 8;
+  const y = (latitude / Math.PI + 0.5) * 8;
+  const elevation = clamp(
+    fractalSurfaceNoise(surfaceSeed, x, y) + fractalSurfaceNoise(surfaceSeed ^ 0x9e3779b9, x * 2.7, y * 2.7) * 0.22,
+    -1,
+    1,
+  );
+  const temperatureK = Math.max(40, planet.equilibriumTemperatureK - Math.abs(Math.sin(latitude)) * 48 - Math.max(0, elevation) * 22);
+  const moistureNoise = (fractalSurfaceNoise(surfaceSeed ^ 0x85ebca6b, x * 1.3, y * 1.3) + 1) * 0.5;
+  const moisture = clamp(planet.waterFraction * 0.7 + moistureNoise * 0.45 - Math.max(0, elevation) * 0.18, 0, 1);
+  return { elevation, temperatureK, moisture, biome: classifyTerrainBiome(planet, temperatureK, moisture, elevation) };
+}
+
 export class ProceduralUniverseGenerator {
   readonly seed:
     ProceduralSeed;
@@ -4485,6 +4616,63 @@ export class ProceduralUniverseGenerator {
           random,
           galaxy,
         ),
+    };
+  }
+
+  terrainTile(
+    planet: PlanetDescriptor,
+    address: TerrainTileAddress,
+  ): TerrainTile {
+    if (planet.realityClass !== "procedural" || planet.seedKey !== this.seed.key) {
+      throw new Error("Terrain requires a planet from this procedural generator.");
+    }
+    if (
+      !Number.isSafeInteger(address.face) || address.face < 0 || address.face > 5 ||
+      !Number.isSafeInteger(address.x) || !Number.isSafeInteger(address.y) ||
+      !Number.isSafeInteger(address.lod) || address.x < 0 || address.y < 0 || address.lod < 0
+    ) {
+      throw new Error("Terrain tile address is invalid.");
+    }
+    const tilesPerFace = 2 ** Math.min(address.lod, 10);
+    if (address.x >= tilesPerFace || address.y >= tilesPerFace) {
+      throw new Error("Terrain tile coordinates exceed the selected LOD.");
+    }
+    const resolution = Math.min(64, 4 * 2 ** Math.min(address.lod, 4));
+    const count = resolution * resolution;
+    const elevations = new Float32Array(count);
+    const temperaturesK = new Float32Array(count);
+    const moistures = new Float32Array(count);
+    const biomes: TerrainBiome[] = [];
+    let waterSamples = 0;
+    for (let row = 0; row < resolution; row++) {
+      for (let column = 0; column < resolution; column++) {
+        const u = ((address.x + (column + 0.5) / resolution) / tilesPerFace) * 2 - 1;
+        const v = ((address.y + (row + 0.5) / resolution) / tilesPerFace) * 2 - 1;
+        const sample = terrainSample(planet, this.seed, address.face, u, v);
+        const index = row * resolution + column;
+        elevations[index] = sample.elevation;
+        temperaturesK[index] = sample.temperatureK;
+        moistures[index] = sample.moisture;
+        biomes.push(sample.biome);
+        if (sample.elevation < -0.18) waterSamples++;
+      }
+    }
+    const weatherSeed = combineHash32(this.seed.words[1], hashString32(planet.id), address.face, address.x, address.y, address.lod);
+    return {
+      kind: "terrain-tile",
+      realityClass: "procedural",
+      generationVersion: PROCEDURAL_ENGINE_VERSION,
+      seedKey: this.seed.key,
+      planetId: planet.id,
+      address: { ...address },
+      resolution,
+      elevations,
+      temperaturesK,
+      moistures,
+      biomes,
+      waterFraction: waterSamples / count,
+      cloudCover: clamp(planet.atmosphere === "none" ? 0 : 0.18 + hashToUnit(weatherSeed) * 0.62, 0, 1),
+      weatherActivity: clamp(planet.atmosphere === "none" ? 0 : hashToUnit(weatherSeed ^ 0x27d4eb2d), 0, 1),
     };
   }
 }

@@ -190,6 +190,14 @@ export interface ClockState {
   paused: boolean;
 }
 
+export function dateToJulianDay(date: Date): number {
+  return date.getTime() / 86_400_000 + 2_440_587.5;
+}
+
+export function julianDayToDate(julianDay: number): Date {
+  return new Date((julianDay - 2_440_587.5) * 86_400_000);
+}
+
 export interface KnowledgeProfile {
   entityId: EntityId;
 
@@ -259,101 +267,66 @@ export function validConfidence(value: number) {
 }
 
 export function validVector(vector: Vec3) {
+  return vector.every(Number.isFinite);
+}
 
 export function assertValidEntity(entity: SpaceEntity): void {
-    // Basic validation: throw if required fields are missing or invalid
-    if (!entity.id || typeof entity.id !== 'string') {
-        throw new Error('Entity must have a non-empty string id');
+  if (!entity.id || !entity.name || !entity.kind) {
+    throw new Error("Entity must have non-empty id, name, and kind");
+  }
+
+  if (entity.spatial) {
+    if (!entity.spatial.frameId || !validVector(entity.spatial.position)) {
+      throw new Error("Entity.spatial must have a frameId and finite position");
     }
-    if (!entity.name || typeof entity.name !== 'string') {
-        throw new Error('Entity must have a non-empty string name');
+    if (entity.spatial.orientation) {
+      const orientation = entity.spatial.orientation;
+      if (![orientation.x, orientation.y, orientation.z, orientation.w].every(Number.isFinite)) {
+        throw new Error("Entity.spatial.orientation must contain finite numbers");
+      }
     }
-    if (!entity.kind || typeof entity.kind !== 'string') {
-        throw new Error('Entity must have a valid EntityKind');
+  }
+
+  if (entity.physical) {
+    const fields: readonly (keyof PhysicalProperties)[] = [
+      "radiusM",
+      "massKg",
+      "temperatureK",
+      "densityKgM3",
+      "surfaceGravityMs2",
+    ];
+    for (const field of fields) {
+      const value = entity.physical[field];
+      if (value && (!Number.isFinite(value.value) || !validConfidence(value.confidence ?? 1))) {
+        throw new Error(`Entity.physical.${field} must contain valid values`);
+      }
     }
-    // Optionally validate spatial, physical, orbit if present
-    if (entity.spatial !== undefined) {
-        if (!entity.spatial.frameId || typeof entity.spatial.frameId !== 'string') {
-            throw new Error('Entity.spatial.frameId must be a non-empty string');
-        }
-        if (entity.spatial.position === undefined || !Array.isArray(entity.spatial.position) || entity.spatial.position.length !== 3) {
-            throw new Error('Entity.spatial.position must be a tuple of three numbers');
-        }
-        for (const coord of entity.spatial.position) {
-            if (typeof coord !== 'number' || !isFinite(coord)) {
-                throw new Error('Entity.spatial.position coordinates must be finite numbers');
-            }
-        }
-        if (entity.spatial.unit === undefined || typeof entity.spatial.unit !== 'string') {
-            throw new Error('Entity.spatial.unit must be a string');
-        }
-        // Orientation validation if present
-        if (entity.spatial.orientation !== undefined) {
-            const q = entity.spatial.orientation;
-            if (!(q instanceof Array) || q.length !== 4) {
-                throw new Error('Entity.spatial.orientation must be a quaternion [x, y, z, w]');
-            }
-            for (const val of q) {
-                if (typeof val !== 'number' || !isFinite(val)) {
-                    throw new Error('Entity.spatial.orientation components must be finite numbers');
-                }
-            }
-        }
+  }
+
+  if (entity.orbit) {
+    const fields: readonly (keyof OrbitalElements)[] = [
+      "semiMajorAxisM",
+      "eccentricity",
+      "inclinationDeg",
+      "longitudeAscendingNodeDeg",
+      "argumentPeriapsisDeg",
+      "meanAnomalyDeg",
+      "epochJulianDay",
+    ];
+    for (const field of fields) {
+      const value = entity.orbit[field];
+      if (value !== undefined && !Number.isFinite(value)) {
+        throw new Error(`Entity.orbit.${field} must be finite`);
+      }
     }
-    // Validate physical properties if present
-    if (entity.physical !== undefined) {
-        const phys = entity.physical;
-        // Each optional field, if present, must be a ScientificValue
-        const fields = ['radiusM', 'massKg', 'temperatureK', 'densityKgM3', 'surfaceGravityMs2'];
-        for (const field of fields) {
-            const val = phys[field];
-            if (val !== undefined) {
-                if (typeof val !== 'object' || val === null) {
-                    throw new Error(`Entity.physical.${field} must be a ScientificValue object`);
-                }
-                if (typeof val.value !== 'number' || !isFinite(val.value)) {
-                    throw new Error(`Entity.physical.${field}.value must be a finite number`);
-                }
-                if (val.evidence !== undefined && typeof val.evidence !== 'string') {
-                    throw new Error(`Entity.physical.${field}.evidence must be a string`);
-                }
-                if (val.confidence !== undefined && (typeof val.confidence !== 'number' || val.confidence < 0 || val.confidence > 1)) {
-                    throw new Error(`Entity.physical.${field}.confidence must be a number between 0 and 1`);
-                }
-                if (!Array.isArray(val.sourceIds)) {
-                    throw new Error(`Entity.physical.${field}.sourceIds must be an array`);
-                }
-                for (const src of val.sourceIds) {
-                    if (typeof src !== 'string') {
-                        throw new Error(`Entity.physical.${field}.sourceIds elements must be strings`);
-                    }
-                }
-            }
-        }
+    if (entity.orbit.eccentricity !== undefined && entity.orbit.eccentricity < 0) {
+      throw new Error("Entity.orbit.eccentricity must be non-negative");
     }
-    // Validate orbit if present
-    if (entity.orbit !== undefined) {
-        const orb = entity.orbit;
-        const orbitFields = ['semiMajorAxisM', 'eccentricity', 'inclinationDeg', 'longitudeAscendingNodeDeg', 'argumentPeriapsisDeg', 'meanAnomalyDeg', 'epochJulianDay'];
-        for (const field of orbitFields) {
-            const val = orb[field];
-            if (val !== undefined && (typeof val !== 'number' || !isFinite(val))) {
-                throw new Error(`Entity.orbit.${field} must be a finite number if present`);
-            }
-        }
-        // Additional constraints: eccentricity >= 0
-        if (orb.eccentricity !== undefined && orb.eccentricity < 0) {
-            throw new Error('Entity.orbit.eccentricity must be >= 0');
-        }
-    }
-    // Validate sourceIds: each must be non-empty string
-    for (const srcId of entity.sourceIds) {
-        if (typeof srcId !== 'string' || !srcId.trim()) {
-            throw new Error('Entity.sourceIds must be non-empty strings');
-        }
-    }
-}
-  return vector.every(Number.isFinite);
+  }
+
+  if (entity.sourceIds.some((sourceId) => !sourceId.trim())) {
+    throw new Error("Entity.sourceIds must contain non-empty strings");
+  }
 }
 
 export const ARCHITECTURE_VERSION = 1;

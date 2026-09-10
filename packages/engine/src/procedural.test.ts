@@ -456,3 +456,48 @@ describe("descriptor validation", () => {
     expect(validateProceduralDescriptor(galaxy)).toHaveLength(0);
   });
 });
+
+describe("procedural planet surfaces", () => {
+  it("regenerates identical terrain tiles from the same address", () => {
+    const generator = new ProceduralUniverseGenerator("Terrain Test");
+    const galaxy = generator.galaxy(ORIGIN, 0);
+    const system = Array.from({ length: 100 }, (_, index) => generator.system(galaxy, index))
+      .find((candidate) => candidate.planets.length > 0);
+    const planet = system?.planets[0];
+
+    expect(planet).toBeDefined();
+    const address = { face: 4, x: 2, y: 1, lod: 2 } as const;
+    const first = generator.terrainTile(planet!, address);
+    const second = generator.terrainTile(planet!, address);
+
+    expect(first).toEqual(second);
+    expect(first.elevations).toHaveLength(first.resolution ** 2);
+    expect(first.biomes).toHaveLength(first.resolution ** 2);
+  });
+
+  it("keeps terrain climate and weather bounded", () => {
+    const generator = new ProceduralUniverseGenerator("Climate Test", "exotic-sandbox");
+    const galaxy = generator.galaxy(ORIGIN, 0);
+    const system = Array.from({ length: 100 }, (_, index) => generator.system(galaxy, index))
+      .find((candidate) => candidate.planets.length > 0);
+    const planet = system!.planets[0]!;
+    const tile = generator.terrainTile(planet, { face: 0, x: 0, y: 0, lod: 0 });
+
+    expect(tile.waterFraction).toBeGreaterThanOrEqual(0);
+    expect(tile.waterFraction).toBeLessThanOrEqual(1);
+    expect(tile.cloudCover).toBeGreaterThanOrEqual(0);
+    expect(tile.cloudCover).toBeLessThanOrEqual(1);
+    expect(tile.weatherActivity).toBeGreaterThanOrEqual(0);
+    expect(tile.weatherActivity).toBeLessThanOrEqual(1);
+    expect(Array.from(tile.temperaturesK).every(Number.isFinite)).toBe(true);
+  });
+
+  it("rejects tiles outside their LOD bounds", () => {
+    const generator = new ProceduralUniverseGenerator("Terrain Bounds");
+    const galaxy = generator.galaxy(ORIGIN, 0);
+    const planet = Array.from({ length: 100 }, (_, index) => generator.system(galaxy, index))
+      .flatMap((system) => system.planets)[0]!;
+
+    expect(() => generator.terrainTile(planet, { face: 0, x: 2, y: 0, lod: 0 })).toThrow();
+  });
+});
