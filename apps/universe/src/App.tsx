@@ -21,6 +21,8 @@ import type {
 import {
   UniverseRuntime,
   createInitialUniverseState,
+  createWorldStream,
+  ProceduralEntityBridge,
   scaleBandFor,
   scaleForBand,
 } from "@known-universe/engine";
@@ -1507,6 +1509,14 @@ function App() {
       UniverseRuntime | null =
       null;
 
+    let proceduralStream:
+      ReturnType<typeof createWorldStream> | null =
+      null;
+
+    let proceduralBridge:
+      ProceduralEntityBridge | null =
+      null;
+
     let renderer:
       ThreeUniverseRenderer | null =
       null;
@@ -1595,6 +1605,22 @@ function App() {
           runtimeRef.current =
             runtime;
 
+          proceduralStream =
+            createWorldStream(
+              "PROJECT UNIVERSE / PROCEDURAL HORIZON",
+              {
+                loadRadiusSectors: 1,
+                retainRadiusSectors: 2,
+                maximumGenerationsPerTick: 4,
+              },
+            );
+
+          proceduralBridge =
+            new ProceduralEntityBridge(
+              proceduralStream,
+              runtime.store,
+            );
+
           setState(
             initial,
           );
@@ -1655,6 +1681,45 @@ function App() {
                 0,
               ],
             });
+
+          const updateProceduralStreaming =
+            () => {
+              if (!proceduralStream || !runtime) {
+                return;
+              }
+
+              const snapshot =
+                runtime.store.getSnapshot();
+
+              const metersPerUnit =
+                snapshot.scale.metersPerUnit;
+
+              const positionLy =
+                snapshot.camera.position.map(
+                  (value) =>
+                    value *
+                    metersPerUnit /
+                    METERS_PER_UNIT.ly,
+                ) as SceneVec;
+
+              const velocityLyPerSecond =
+                snapshot.camera.velocity.map(
+                  (value) =>
+                    value *
+                    metersPerUnit /
+                    METERS_PER_UNIT.ly,
+                ) as SceneVec;
+
+              proceduralStream.updateObserver(
+                {
+                  positionLy,
+                  velocityLyPerSecond,
+                },
+                4,
+              );
+            };
+
+          updateProceduralStreaming();
 
           setState(
             runtime.store
@@ -1739,6 +1804,8 @@ function App() {
                     renderer.getStats(),
                   );
                 }
+
+                updateProceduralStreaming();
               },
 
               300,
@@ -2782,6 +2849,10 @@ function App() {
       cleanupKeyboard?.();
 
       cleanupPointer?.();
+
+      proceduralBridge?.dispose();
+
+      proceduralStream?.dispose();
 
       resizeObserver?.disconnect();
 

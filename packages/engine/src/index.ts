@@ -10932,6 +10932,8 @@ export function navigateToEntity(
 
 export * from "./procedural";
 
+export * from "./procedural-entities";
+
 export * from "./world-stream";
 
 export * from "./unified-universe";

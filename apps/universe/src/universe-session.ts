@@ -14,6 +14,9 @@ import type {
 import {
   UniverseRuntime,
   createInitialUniverseState,
+  createWorldStream,
+  ProceduralEntityBridge,
+  WorldStreamManager,
 } from "@known-universe/engine";
 
 import type {
@@ -169,6 +172,9 @@ export interface UniverseSessionOptions {
 
   pixelRatioLimit?:
     number;
+
+  proceduralSeed?:
+    string;
 }
 
 
@@ -1393,6 +1399,10 @@ export class UniverseSession {
     number;
 
 
+  private readonly proceduralSeed:
+    string;
+
+
   private statusValue:
     UniverseSessionStatus =
     "idle";
@@ -1434,6 +1444,18 @@ export class UniverseSession {
 
   private interactionValue:
     UniverseInteractionController |
+    null =
+    null;
+
+
+  private proceduralStreamValue:
+    WorldStreamManager |
+    null =
+    null;
+
+
+  private proceduralBridgeValue:
+    ProceduralEntityBridge |
     null =
     null;
 
@@ -1587,6 +1609,11 @@ export class UniverseSession {
 
         4,
       );
+
+
+    this.proceduralSeed =
+      options.proceduralSeed ??
+      "PROJECT UNIVERSE / PROCEDURAL HORIZON";
   }
 
 
@@ -2068,6 +2095,33 @@ export class UniverseSession {
             runtime;
 
 
+          const proceduralStream =
+            createWorldStream(
+              this.proceduralSeed,
+              {
+                loadRadiusSectors:
+                  1,
+
+                retainRadiusSectors:
+                  2,
+
+                maximumGenerationsPerTick:
+                  4,
+              },
+            );
+
+
+          this.proceduralStreamValue =
+            proceduralStream;
+
+
+          this.proceduralBridgeValue =
+            new ProceduralEntityBridge(
+              proceduralStream,
+              runtime.store,
+            );
+
+
           this.stateValue =
             initialState;
 
@@ -2095,6 +2149,11 @@ export class UniverseSession {
           ) {
             return;
           }
+
+
+          this.updateProceduralStreaming(
+            runtime.store.getSnapshot(),
+          );
 
 
           this.setStatus(
@@ -2598,11 +2657,71 @@ export class UniverseSession {
           }
 
 
+          const runtime =
+            this.runtimeValue;
+
+
+          if (
+            runtime
+          ) {
+            this.updateProceduralStreaming(
+              runtime.store.getSnapshot(),
+            );
+          }
+
+
           this.updateRendererStats();
         },
 
         this.statsIntervalMs,
       );
+  }
+
+
+  private updateProceduralStreaming(
+    state:
+      UniverseState,
+  ): void {
+    const stream =
+      this.proceduralStreamValue;
+
+
+    if (
+      !stream
+    ) {
+      return;
+    }
+
+
+    const metersPerUnit =
+      state.scale.metersPerUnit;
+
+
+    const positionLy =
+      state.camera.position.map(
+        value =>
+          value *
+          metersPerUnit /
+          METERS_PER_UNIT.ly,
+      ) as [number, number, number];
+
+
+    const velocityLyPerSecond =
+      state.camera.velocity.map(
+        value =>
+          value *
+          metersPerUnit /
+          METERS_PER_UNIT.ly,
+      ) as [number, number, number];
+
+
+    stream.updateObserver(
+      {
+        positionLy,
+        velocityLyPerSecond,
+      },
+      4,
+    );
   }
 
 
@@ -3875,6 +3994,22 @@ export class UniverseSession {
 
 
     this.stateUnsubscribe =
+      null;
+
+
+    this.proceduralBridgeValue
+      ?.dispose();
+
+
+    this.proceduralBridgeValue =
+      null;
+
+
+    this.proceduralStreamValue
+      ?.dispose();
+
+
+    this.proceduralStreamValue =
       null;
 
 
