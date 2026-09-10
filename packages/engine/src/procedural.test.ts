@@ -325,6 +325,24 @@ describe("procedural universe generation", () => {
     }
   });
 
+  it("normalizes non-integer generation budgets", () => {
+    const generator = new ProceduralUniverseGenerator(
+      "Budget Normalization",
+      "standard",
+      {
+        maximumGalaxies: 7.9,
+        maximumSystemsPerRequest: 33.4,
+        maximumPlanetsPerSystem: 5.7,
+        maximumMoonsPerPlanet: 2.2,
+      },
+    );
+
+    expect(generator.budget.maximumGalaxies).toBe(7);
+    expect(generator.budget.maximumSystemsPerRequest).toBe(33);
+    expect(generator.budget.maximumPlanetsPerSystem).toBe(5);
+    expect(generator.budget.maximumMoonsPerPlanet).toBe(2);
+  });
+
   it("marks all generated content as procedural", () => {
     const generator = new ProceduralUniverseGenerator(
       "Reality Boundary",
@@ -408,6 +426,48 @@ describe("procedural universe generation", () => {
     };
 
     expect(generator.sector(coordinate)).toEqual(generator.sector(coordinate));
+  });
+
+  it("biases giant planets toward colder outer orbits", () => {
+    const generator = new ProceduralUniverseGenerator(
+      "Outer Orbit Giants",
+      "dense-galaxies",
+      { maximumPlanetsPerSystem: 24 },
+    );
+    const galaxy = generator.galaxy(ORIGIN, 0);
+
+    let innerCount = 0;
+    let innerGiants = 0;
+    let outerCount = 0;
+    let outerGiants = 0;
+
+    for (let systemIndex = 0; systemIndex < 320; systemIndex++) {
+      const system = generator.system(galaxy, systemIndex);
+
+      for (const planet of system.planets) {
+        const giant =
+          planet.planetClass === "gas-giant" ||
+          planet.planetClass === "ice-giant";
+
+        if (planet.semiMajorAxisAu < 0.8) {
+          innerCount++;
+          if (giant) {
+            innerGiants++;
+          }
+        }
+
+        if (planet.semiMajorAxisAu > 5) {
+          outerCount++;
+          if (giant) {
+            outerGiants++;
+          }
+        }
+      }
+    }
+
+    expect(innerCount).toBeGreaterThan(0);
+    expect(outerCount).toBeGreaterThan(0);
+    expect(outerGiants / outerCount).toBeGreaterThan(innerGiants / innerCount);
   });
 
   it("rejects invalid galaxy indexes", () => {

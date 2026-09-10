@@ -433,13 +433,13 @@ export const DEFAULT_PROCEDURAL_BUDGET:
     12,
 
   maximumSystemsPerRequest:
-    64,
+    160,
 
   maximumPlanetsPerSystem:
-    14,
+    24,
 
   maximumMoonsPerPlanet:
-    12,
+    24,
 };
 
 export const PROCEDURAL_PROFILES:
@@ -695,6 +695,28 @@ export function mixHash32(
 
   return unsigned(
     result,
+  );
+}
+
+function sanitizeBudgetValue(
+  value:
+    number,
+  fallback:
+    number,
+): number {
+  if (
+    !Number.isFinite(
+      value,
+    )
+  ) {
+    return fallback;
+  }
+
+  return Math.max(
+    0,
+    Math.floor(
+      value,
+    ),
   );
 }
 
@@ -2432,13 +2454,35 @@ function choosePlanetClass(
     number,
 ):
   PlanetClass {
+  const giantProbability =
+    clamp(
+      giantPlanetRate *
+        (
+          semiMajorAxisAu <
+          0.6
+            ? 0.25
+            : semiMajorAxisAu <
+                2.5
+              ? 0.85
+              : semiMajorAxisAu <
+                  8
+                ? 1.4
+                : 1.8
+        ),
+      0.01,
+      0.92,
+    );
+
   if (
     random.chance(
-      giantPlanetRate,
+      giantProbability,
     )
   ) {
     return random.chance(
-      0.68,
+      semiMajorAxisAu <
+        2
+        ? 0.78
+        : 0.42,
     )
       ? "gas-giant"
       : "ice-giant";
@@ -2446,23 +2490,93 @@ function choosePlanetClass(
 
   if (
     semiMajorAxisAu <
-    0.16
+    0.12
   ) {
-    return random.chance(
-      0.3,
-    )
+    return random.chance(0.62)
       ? "lava"
       : "rocky";
   }
 
+  if (
+    semiMajorAxisAu <
+    0.8
+  ) {
+    const index =
+      random.weightedIndex([
+        0.52,
+        0.26,
+        0.08,
+        0.08,
+        0.05,
+        0.01,
+      ]);
+
+    return (
+      [
+        "rocky",
+        "super-earth",
+        "lava",
+        "sub-neptune",
+        "dwarf",
+        "ocean",
+      ] as const
+    )[index] ??
+      "rocky";
+  }
+
+  if (
+    semiMajorAxisAu >
+    9
+  ) {
+    const index =
+      random.weightedIndex([
+        0.07,
+        0.08,
+        0.22,
+        0.3,
+        0.07,
+        0.26,
+      ]);
+
+    return (
+      [
+        "rocky",
+        "super-earth",
+        "sub-neptune",
+        "dwarf",
+        "ocean",
+        "ice",
+      ] as const
+    )[index] ??
+      "ice";
+  }
+
   const index =
     random.weightedIndex([
-      0.42,
-      0.18,
-      0.12,
-      0.1,
-      0.09,
-      0.09,
+      semiMajorAxisAu <
+      2.4
+        ? 0.34
+        : 0.16,
+      semiMajorAxisAu <
+      2.4
+        ? 0.21
+        : 0.11,
+      semiMajorAxisAu <
+      2.4
+        ? 0.14
+        : 0.22,
+      semiMajorAxisAu <
+      2.4
+        ? 0.13
+        : 0.28,
+      semiMajorAxisAu <
+      2.4
+        ? 0.12
+        : 0.05,
+      semiMajorAxisAu <
+      2.4
+        ? 0.06
+        : 0.18,
     ]);
 
   return (
@@ -3763,9 +3877,39 @@ export class ProceduralUniverseGenerator {
         preset
       ];
 
-    this.budget = {
+    const mergedBudget = {
       ...DEFAULT_PROCEDURAL_BUDGET,
       ...budget,
+    };
+
+    this.budget = {
+      maximumGalaxies: sanitizeBudgetValue(
+        mergedBudget
+          .maximumGalaxies,
+        DEFAULT_PROCEDURAL_BUDGET
+          .maximumGalaxies,
+      ),
+      maximumSystemsPerRequest:
+        sanitizeBudgetValue(
+          mergedBudget
+            .maximumSystemsPerRequest,
+          DEFAULT_PROCEDURAL_BUDGET
+            .maximumSystemsPerRequest,
+        ),
+      maximumPlanetsPerSystem:
+        sanitizeBudgetValue(
+          mergedBudget
+            .maximumPlanetsPerSystem,
+          DEFAULT_PROCEDURAL_BUDGET
+            .maximumPlanetsPerSystem,
+        ),
+      maximumMoonsPerPlanet:
+        sanitizeBudgetValue(
+          mergedBudget
+            .maximumMoonsPerPlanet,
+          DEFAULT_PROCEDURAL_BUDGET
+            .maximumMoonsPerPlanet,
+        ),
     };
 
     this.validateBudget();
@@ -3774,6 +3918,22 @@ export class ProceduralUniverseGenerator {
   private validateBudget():
     void {
     if (
+      !Number.isSafeInteger(
+        this.budget
+          .maximumGalaxies,
+      ) ||
+      !Number.isSafeInteger(
+        this.budget
+          .maximumSystemsPerRequest,
+      ) ||
+      !Number.isSafeInteger(
+        this.budget
+          .maximumPlanetsPerSystem,
+      ) ||
+      !Number.isSafeInteger(
+        this.budget
+          .maximumMoonsPerPlanet,
+      ) ||
       this.budget
         .maximumGalaxies <
         0 ||
@@ -3788,7 +3948,7 @@ export class ProceduralUniverseGenerator {
         0
     ) {
       throw new Error(
-        "Procedural generation budgets cannot be negative.",
+        "Procedural generation budgets must be finite non-negative integers.",
       );
     }
   }
