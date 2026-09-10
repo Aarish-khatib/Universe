@@ -46,6 +46,8 @@ import {
   UniverseHUD,
 } from "./Components/UniverseHUD";
 
+import SettingsPanel from "./Components/SettingsPanel";
+
 import "./App.css";
 
 type BootState =
@@ -1414,16 +1416,10 @@ function App() {
   };
 
   const openSettings = () => {
-    setMode(
-      "science",
-    );
-
-    window.dispatchEvent(
-      new CustomEvent(
-        "universe:open-settings",
-      ),
-    );
-  };
+      setMode(
+        "science",
+      );
+    };
 
   const discoveryMode = () => {
     window.dispatchEvent(
@@ -2456,6 +2452,11 @@ function App() {
             handleKeyUp,
           );
 
+          window.addEventListener(
+            "universe:open-settings",
+            openSettings
+          );
+
           const movementTick =
             (
               now: number,
@@ -3005,7 +3006,15 @@ function App() {
         ref={viewportRef}
         aria-label="Three dimensional universe viewport"
       />
-
+      {mode === "science" && (
+              <SettingsPanel
+                isOpen={true}
+                onClose={() => setMode("explore")}
+                onSettingsChange={(settings) => {
+                  // Handle settings change if needed
+                }}
+              />
+            )}
       <div className="ambient-overlay" />
 
       <UniverseHUD

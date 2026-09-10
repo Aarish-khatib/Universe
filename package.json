@@ -7,18 +7,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev:universe",
-    "dev:universe": "npm run dev -w @known-universe/universe -- --port 5173 --strictPort",
-    "dev:zero": "npm run dev -w @known-universe/universe-zero -- --port 5174 --strictPort",
+    "dev": "concurrently -n COSMOSCOPE,ZERO \"npm:dev:cosmoscope\" \"npm:dev:zero\"",
+    "dev:cosmoscope": "npm run dev -w @known-universe/cosmoscope -- --port 5173 --strictPort",
+    "dev:zero": "npm run dev -w @known-universe/universe-zero -- --port 3001 --strictPort",
     "test": "vitest run",
     "check:packages": "tsc -p packages/core && tsc -p packages/engine && tsc -p packages/data && tsc -p packages/render-three",
     "check": "npm test && npm run check:packages && npm run lint --workspaces --if-present && npm run build --workspaces --if-present"
-  },
-  "devDependencies": {
-    "concurrently": "^10.0.5",
-    "oxlint": "^1.79.0",
-    "prettier": "^3.9.6",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
   }
 }
