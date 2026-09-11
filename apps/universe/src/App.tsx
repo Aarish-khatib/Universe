@@ -58,7 +58,7 @@ import { DiscoveryLog } from "@known-universe/engine";
 import { WaypointSystem } from "@known-universe/engine";
 import { PoiSystem } from "@known-universe/engine";
 import { DiscoveryNotificationQueue } from "@known-universe/engine";
-import type { AtmosphericEntryState } from "@known-universe/engine";
+
 
 import "./App.css";
 
