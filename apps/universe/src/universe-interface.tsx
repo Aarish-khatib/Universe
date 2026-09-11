@@ -24,6 +24,7 @@ import type {
 
 import { DiscoveryPanel } from "./Components/DiscoveryPanel";
 import { WaypointPanel } from "./Components/WaypointPanel";
+import { AnomalyBadge } from "./Components/AnomalyBadge";
 
 
 export const UNIVERSE_INTERFACE_VERSION =
