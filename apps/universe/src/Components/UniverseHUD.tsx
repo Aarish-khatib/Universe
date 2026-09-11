@@ -43,10 +43,7 @@ type OverlayKey =
   | "gravity"
   | "humanity"
   | "knowledge"
-  | "orbits"
-  | "discovery"
-  | "waypoints"
-  | "poi";
+  | "orbits";
 
 type KnowledgeClass =
   | "observed"
