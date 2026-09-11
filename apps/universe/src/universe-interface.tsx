@@ -2345,7 +2345,8 @@ export const UniverseInterface =
 
       const handleFlyToFromLog = useCallback(
         (entityId: string) => {
-          (session as { flyToEntity?: (id: string) => void }).flyToEntity?.(entityId);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (session as any).flyToEntity?.(entityId);
           setDiscoveryLogOpen(false);
         },
         [session],
@@ -2354,7 +2355,8 @@ export const UniverseInterface =
       const handleWaypointActivate = useCallback(
         (wp: { entityId?: string }) => {
           if (wp.entityId) {
-            (session as { flyToEntity?: (id: string) => void }).flyToEntity?.(wp.entityId);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (session as any).flyToEntity?.(wp.entityId);
           }
           setWaypointsOpen(false);
         },
@@ -3681,7 +3683,8 @@ export const UniverseInterface =
 
           {discoveryLogOpen && (
             <DiscoveryPanel
-              log={(session as { discoveryLog: Parameters<typeof DiscoveryPanel>[0]["log"] }).discoveryLog}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              log={(session as any).discoveryLog}
               onFlyTo={handleFlyToFromLog}
               onClose={() => setDiscoveryLogOpen(false)}
             />
@@ -3689,7 +3692,8 @@ export const UniverseInterface =
 
           {waypointsOpen && (
             <WaypointPanel
-              system={(session as { waypointSystem: Parameters<typeof WaypointPanel>[0]["system"] }).waypointSystem}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              system={(session as any).waypointSystem}
               onActivate={handleWaypointActivate}
               onClose={() => setWaypointsOpen(false)}
             />
