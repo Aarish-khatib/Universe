@@ -4146,6 +4146,7 @@ export class UniverseSession {
 
 
     this.revisionValue++;
+  }
   /* === Phase 1: Exploration API === */
 
   flyToEntity(entityId: EntityId): void {
