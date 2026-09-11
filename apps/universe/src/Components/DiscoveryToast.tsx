@@ -5,7 +5,7 @@
    beautiful animated toasts at bottom-right of HUD.
    ============================================================ */
 
-import { useEffect, useState, useCallback } from \"react\";
+import { useEffect, useState, useCallback } from "react";
 import type { DiscoveryNotification, DiscoveryNotificationQueue, NotificationTier } from "@known-universe/engine";
 
 const TIER_STYLES: Record<NotificationTier, { border: string; glow: string; bg: string; headlineColor: string }> = {
