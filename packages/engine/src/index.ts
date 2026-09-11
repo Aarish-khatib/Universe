@@ -10939,4 +10939,18 @@ export * from "./world-stream";
 export * from "./unified-universe";
 
 export * from "./cinematic-navigation";
-
+export * from "./discovery-log";
+export * from "./waypoint-system";
+export * from "./atmosphere-profile";
+export * from "./anomaly-generator";
+export * from "./lod-controller";
+export * from "./scale-transition";
+export * from "./atmospheric-entry";
+export * from "./discovery-notification";
+export * from "./nebula-generator";
+export * from "./poi-system";
+export * from "./performance-budget";
+export * from "./marker-api";
+export * from "./photo-mode";
+export * from "./narrative-layer";
+export * from "./universe-extension-api";

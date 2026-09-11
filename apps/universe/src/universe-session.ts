@@ -17,6 +17,19 @@ import {
   createWorldStream,
   ProceduralEntityBridge,
   WorldStreamManager,
+  DiscoveryLog,
+  WaypointSystem,
+  LodController,
+  classifyAnomalies,
+  DiscoveryNotificationQueue,
+  buildNotification,
+  ScaleTransitionController,
+  AtmosphericEntryController,
+  PoiSystem,
+  MarkerApi,
+  PhotoModeController,
+  NarrativeLayer,
+  PerformanceBudget,
 } from "@known-universe/engine";
 
 import type {
@@ -1519,6 +1532,42 @@ export class UniverseSession {
     false;
 
 
+  /* === Phase 1: Exploration systems === */
+  readonly discoveryLog: DiscoveryLog =
+    DiscoveryLog.loadFromLocalStorage();
+
+  readonly waypointSystem: WaypointSystem =
+    new WaypointSystem();
+
+  readonly lodController: LodController =
+    new LodController();
+
+  readonly notificationQueue: DiscoveryNotificationQueue =
+    new DiscoveryNotificationQueue();
+
+  readonly scaleTransition: ScaleTransitionController =
+    new ScaleTransitionController("system");
+
+  readonly atmosphericEntry: AtmosphericEntryController =
+    new AtmosphericEntryController();
+
+  /* === Phase 3+4: Extension systems === */
+  readonly poiSystem: PoiSystem =
+    PoiSystem.loadFromLocalStorage();
+
+  readonly markerApi: MarkerApi =
+    MarkerApi.loadFromLocalStorage();
+
+  readonly photoMode: PhotoModeController =
+    new PhotoModeController();
+
+  readonly narrative: NarrativeLayer =
+    new NarrativeLayer();
+
+  readonly performanceBudget: PerformanceBudget =
+    new PerformanceBudget();
+
+
   constructor(
     options:
       UniverseSessionOptions,
@@ -2120,6 +2169,28 @@ export class UniverseSession {
               proceduralStream,
               runtime.store,
             );
+
+
+          /* Wire DiscoveryLog — record every procedural system that streams in */
+          proceduralStream.subscribe(event => {
+            if (event.type === "system-ready") {
+              const anomaly = classifyAnomalies(event.system);
+              const star = event.system.stars[0];
+              this.discoveryLog.visit({
+                id: event.system.id,
+                name: star?.name ?? event.system.id,
+                kind: "star-system",
+                origin: "procedural",
+                anomalyScore: anomaly.score,
+                seedKey: event.system.seedKey,
+                tags: anomaly.classes as string[],
+                coordinates: {
+                  positionLy: event.system.positionLy,
+                  label: star?.name ?? event.system.id,
+                },
+              });
+            }
+          });
 
 
           this.stateValue =
@@ -4056,6 +4127,14 @@ export class UniverseSession {
       [];
 
 
+    /* Persist exploration data on dispose */
+    try {
+      this.discoveryLog.saveToLocalStorage();
+      this.poiSystem.saveToLocalStorage();
+      this.markerApi.saveToLocalStorage();
+    } catch { /* quota or SSR */ }
+
+
     this.statusValue =
       "disposed";
 
@@ -4067,6 +4146,42 @@ export class UniverseSession {
 
 
     this.revisionValue++;
+  /* === Phase 1: Exploration API === */
+
+  flyToEntity(entityId: EntityId): void {
+    try {
+      this.travelTo(entityId);
+      const entity = this.entityById(entityId);
+      if (entity) {
+        this.discoveryLog.visit({
+          id: entityId,
+          name: entity.name,
+          kind: entity.kind as "star-system" | "star" | "planet" | "moon" | "galaxy" | "asteroid-belt" | "anomaly" | "landmark",
+          origin: entity.tags?.includes("procedural") ? "procedural" : "reality",
+        });
+      }
+    } catch { /* entity may not be loaded yet */ }
+  }
+
+  addWaypointForEntity(entityId: EntityId): void {
+    const entity = this.entityById(entityId);
+    if (!entity) return;
+    const ly: [number, number, number] = [0, 0, 0];
+    if (entity.spatial) {
+      const { position, unit } = entity.spatial;
+      if (unit === "ly") {
+        ly[0] = position[0]; ly[1] = position[1]; ly[2] = position[2];
+      }
+    }
+    this.waypointSystem.addEntity(entityId, entity.name, ly);
+  }
+
+  activateWaypoint(waypointId: string): void {
+    this.waypointSystem.activate(waypointId);
+    const wp = this.waypointSystem.active;
+    if (wp?.entityId) {
+      this.flyToEntity(wp.entityId);
+    }
   }
 }
 

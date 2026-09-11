@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -20,6 +21,10 @@ import type {
   UniverseSessionSnapshot,
   UniverseViewMode,
 } from "./universe-session";
+
+import { DiscoveryPanel } from "./Components/DiscoveryPanel";
+import { WaypointPanel } from "./Components/WaypointPanel";
+import { AnomalyBadge } from "./Components/AnomalyBadge";
 
 
 export const UNIVERSE_INTERFACE_VERSION =
@@ -2325,6 +2330,40 @@ export const UniverseInterface =
         );
 
 
+      /* === Phase 1: Exploration panels === */
+      const [
+        discoveryLogOpen,
+        setDiscoveryLogOpen,
+      ] =
+        useState(false);
+
+      const [
+        waypointsOpen,
+        setWaypointsOpen,
+      ] =
+        useState(false);
+
+      const handleFlyToFromLog = useCallback(
+        (entityId: string) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (session as any).flyToEntity?.(entityId);
+          setDiscoveryLogOpen(false);
+        },
+        [session],
+      );
+
+      const handleWaypointActivate = useCallback(
+        (wp: { entityId?: string }) => {
+          if (wp.entityId) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (session as any).flyToEntity?.(wp.entityId);
+          }
+          setWaypointsOpen(false);
+        },
+        [session],
+      );
+
+
       const selected =
         snapshot.selected;
 
@@ -3636,6 +3675,29 @@ export const UniverseInterface =
                 </span>
               </div>
             )}
+
+
+          {/* ==================================================
+              PHASE 1: DISCOVERY + WAYPOINT PANELS
+              ================================================== */}
+
+          {discoveryLogOpen && (
+            <DiscoveryPanel
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              log={(session as any).discoveryLog}
+              onFlyTo={handleFlyToFromLog}
+              onClose={() => setDiscoveryLogOpen(false)}
+            />
+          )}
+
+          {waypointsOpen && (
+            <WaypointPanel
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              system={(session as any).waypointSystem}
+              onActivate={handleWaypointActivate}
+              onClose={() => setWaypointsOpen(false)}
+            />
+          )}
 
 
           {/* ==================================================

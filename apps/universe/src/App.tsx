@@ -49,6 +49,16 @@ import {
 } from "./Components/UniverseHUD";
 
 import SettingsPanel from "./Components/SettingsPanel";
+import { DiscoveryPanel } from "./Components/DiscoveryPanel";
+import { WaypointPanel } from "./Components/WaypointPanel";
+import { DiscoveryToast } from "./Components/DiscoveryToast";
+import { AtmosphericOverlay } from "./Components/AtmosphericOverlay";
+import { PoiPanel } from "./Components/PoiPanel";
+import { DiscoveryLog } from "@known-universe/engine";
+import { WaypointSystem } from "@known-universe/engine";
+import { PoiSystem } from "@known-universe/engine";
+import { DiscoveryNotificationQueue } from "@known-universe/engine";
+
 
 import "./App.css";
 
@@ -630,6 +640,12 @@ function bodyGlyph(
       return "â—";
   }
 }
+
+// Module-level exploration singletons — survive React re-renders
+const _discoveryLog = DiscoveryLog.loadFromLocalStorage();
+const _waypointSystem = new WaypointSystem();
+const _poiSystem = PoiSystem.loadFromLocalStorage();
+const _notificationQueue = new DiscoveryNotificationQueue();
 
 function App() {
   const viewportRef =
@@ -1429,6 +1445,23 @@ function App() {
         "universe:discovery",
       ),
     );
+  };
+
+  /* === Phase 1: Exploration panel state === */
+  const [discoveryLogOpen, setDiscoveryLogOpen] = useState(false);
+  const [waypointsOpen, setWaypointsOpen] = useState(false);
+  const [poiOpen, setPoiOpen] = useState(false);
+
+  const handleFlyToFromLog = (entityId: string) => {
+    flyTo(entityId, 1000);
+    setDiscoveryLogOpen(false);
+  };
+
+  const handleWaypointActivate = (wp: { entityId?: string }) => {
+    if (wp.entityId) {
+      flyTo(wp.entityId, 1000);
+    }
+    setWaypointsOpen(false);
   };
 
   const compareScale = () => {
@@ -3137,6 +3170,9 @@ function App() {
         onCompareScale={
           compareScale
         }
+        onOpenDiscoveryLog={() => setDiscoveryLogOpen(v => !v)}
+        onOpenWaypoints={() => setWaypointsOpen(v => !v)}
+        onOpenPoi={() => setPoiOpen(v => !v)}
         humanity={
           state.overlays.humanity
             ? HUMANITY_STATUS
@@ -3155,6 +3191,42 @@ function App() {
           temporalLabel
         }
       />
+
+      {/* === Phase 2: Atmospheric Overlay === */}
+      <AtmosphericOverlay entry={null} />
+
+      {/* === Phase 2: Discovery Toasts === */}
+      <DiscoveryToast
+        queue={_notificationQueue}
+        onFlyTo={handleFlyToFromLog}
+      />
+
+      {/* === Phase 3: POI Panel === */}
+      {poiOpen && (
+        <PoiPanel
+          system={_poiSystem}
+          onFlyTo={handleFlyToFromLog}
+          onClose={() => setPoiOpen(false)}
+        />
+      )}
+
+      {/* === Phase 1: Exploration Panels === */}
+      {discoveryLogOpen && (
+        <DiscoveryPanel
+          log={_discoveryLog}
+          onFlyTo={handleFlyToFromLog}
+          onClose={() => setDiscoveryLogOpen(false)}
+        />
+      )}
+
+      {waypointsOpen && (
+        <WaypointPanel
+          system={_waypointSystem}
+          onActivate={handleWaypointActivate}
+          onClose={() => setWaypointsOpen(false)}
+        />
+      )}
+
 
       <div
         className="universe-accessibility"
