@@ -21,6 +21,10 @@ import {
   WaypointSystem,
   LodController,
   classifyAnomalies,
+  DiscoveryNotificationQueue,
+  buildNotification,
+  ScaleTransitionController,
+  AtmosphericEntryController,
 } from "@known-universe/engine";
 
 import type {
@@ -1532,6 +1536,15 @@ export class UniverseSession {
 
   readonly lodController: LodController =
     new LodController();
+
+  readonly notificationQueue: DiscoveryNotificationQueue =
+    new DiscoveryNotificationQueue();
+
+  readonly scaleTransition: ScaleTransitionController =
+    new ScaleTransitionController("system");
+
+  readonly atmosphericEntry: AtmosphericEntryController =
+    new AtmosphericEntryController();
 
 
   constructor(
