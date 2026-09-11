@@ -9,6 +9,5 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "_buildNote": "clean-build-trigger-v2"
+  ]
 }
