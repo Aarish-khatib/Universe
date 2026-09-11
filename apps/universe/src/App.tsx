@@ -49,6 +49,8 @@ import {
 } from "./Components/UniverseHUD";
 
 import SettingsPanel from "./Components/SettingsPanel";
+import { DiscoveryPanel } from "./Components/DiscoveryPanel";
+import { WaypointPanel } from "./Components/WaypointPanel";
 
 import "./App.css";
 
@@ -1429,6 +1431,22 @@ function App() {
         "universe:discovery",
       ),
     );
+  };
+
+  /* === Phase 1: Exploration panel state === */
+  const [discoveryLogOpen, setDiscoveryLogOpen] = useState(false);
+  const [waypointsOpen, setWaypointsOpen] = useState(false);
+
+  const handleFlyToFromLog = (entityId: string) => {
+    flyTo(entityId, 1000);
+    setDiscoveryLogOpen(false);
+  };
+
+  const handleWaypointActivate = (wp: { entityId?: string }) => {
+    if (wp.entityId) {
+      flyTo(wp.entityId, 1000);
+    }
+    setWaypointsOpen(false);
   };
 
   const compareScale = () => {
@@ -3137,6 +3155,8 @@ function App() {
         onCompareScale={
           compareScale
         }
+        onOpenDiscoveryLog={() => setDiscoveryLogOpen(v => !v)}
+        onOpenWaypoints={() => setWaypointsOpen(v => !v)}
         humanity={
           state.overlays.humanity
             ? HUMANITY_STATUS
@@ -3155,6 +3175,24 @@ function App() {
           temporalLabel
         }
       />
+
+      {/* === Phase 1: Exploration Panels === */}
+      {discoveryLogOpen && runtimeRef.current && (
+        <DiscoveryPanel
+          log={(runtimeRef.current as { discoveryLog: NonNullable<unknown> }).discoveryLog as Parameters<typeof DiscoveryPanel>[0]["log"]}
+          onFlyTo={handleFlyToFromLog}
+          onClose={() => setDiscoveryLogOpen(false)}
+        />
+      )}
+
+      {waypointsOpen && runtimeRef.current && (
+        <WaypointPanel
+          system={(runtimeRef.current as { waypointSystem: NonNullable<unknown> }).waypointSystem as Parameters<typeof WaypointPanel>[0]["system"]}
+          onActivate={handleWaypointActivate}
+          onClose={() => setWaypointsOpen(false)}
+        />
+      )}
+
 
       <div
         className="universe-accessibility"
