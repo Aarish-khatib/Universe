@@ -53,6 +53,7 @@ import { DiscoveryPanel } from "./Components/DiscoveryPanel";
 import { WaypointPanel } from "./Components/WaypointPanel";
 import { DiscoveryToast } from "./Components/DiscoveryToast";
 import { AtmosphericOverlay } from "./Components/AtmosphericOverlay";
+import { PoiPanel } from "./Components/PoiPanel";
 
 import "./App.css";
 
@@ -1438,6 +1439,7 @@ function App() {
   /* === Phase 1: Exploration panel state === */
   const [discoveryLogOpen, setDiscoveryLogOpen] = useState(false);
   const [waypointsOpen, setWaypointsOpen] = useState(false);
+  const [poiOpen, setPoiOpen] = useState(false);
 
   const handleFlyToFromLog = (entityId: string) => {
     flyTo(entityId, 1000);
@@ -3159,6 +3161,7 @@ function App() {
         }
         onOpenDiscoveryLog={() => setDiscoveryLogOpen(v => !v)}
         onOpenWaypoints={() => setWaypointsOpen(v => !v)}
+        onOpenPoi={() => setPoiOpen(v => !v)}
         humanity={
           state.overlays.humanity
             ? HUMANITY_STATUS
@@ -3188,6 +3191,15 @@ function App() {
         <DiscoveryToast
           queue={(runtimeRef.current as { notificationQueue: Parameters<typeof DiscoveryToast>[0]["queue"] }).notificationQueue}
           onFlyTo={handleFlyToFromLog}
+        />
+      )}
+
+      {/* === Phase 3: POI Panel === */}
+      {poiOpen && runtimeRef.current && (
+        <PoiPanel
+          system={(runtimeRef.current as { poiSystem: Parameters<typeof PoiPanel>[0]["system"] }).poiSystem}
+          onFlyTo={handleFlyToFromLog}
+          onClose={() => setPoiOpen(false)}
         />
       )}
 
