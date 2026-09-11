@@ -4146,10 +4146,6 @@ export class UniverseSession {
 
 
     this.revisionValue++;
-  }
-}
-
-
   /* === Phase 1: Exploration API === */
 
   flyToEntity(entityId: EntityId): void {
@@ -4187,6 +4183,7 @@ export class UniverseSession {
       this.flyToEntity(wp.entityId);
     }
   }
+}
 
 
 export function createUniverseSession(
