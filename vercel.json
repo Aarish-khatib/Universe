@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "npm install && npm run build -w @known-universe/universe",
-  "outputDirectory": "apps/universe/dist",
+  "buildCommand": "npm install && npm run build -w @known-universe/universe && cp -r apps/universe/dist dist",
+  "outputDirectory": "dist",
   "installCommand": "npm install",
   "rewrites": [
     {
