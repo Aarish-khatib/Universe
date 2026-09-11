@@ -10939,4 +10939,8 @@ export * from "./world-stream";
 export * from "./unified-universe";
 
 export * from "./cinematic-navigation";
-
+export * from "./discovery-log";
+export * from "./waypoint-system";
+export * from "./atmosphere-profile";
+export * from "./anomaly-generator";
+export * from "./lod-controller";
