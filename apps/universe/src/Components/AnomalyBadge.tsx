@@ -4,7 +4,6 @@
    panels when a system has anomaly classes.  No external deps.
    ============================================================ */
 
-import React from "react";
 import type { AnomalyClass } from "@known-universe/engine";
 
 const CLASS_META: Record<AnomalyClass, { icon: string; color: string }> = {
