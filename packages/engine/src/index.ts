@@ -10944,3 +10944,6 @@ export * from "./waypoint-system";
 export * from "./atmosphere-profile";
 export * from "./anomaly-generator";
 export * from "./lod-controller";
+export * from "./scale-transition";
+export * from "./atmospheric-entry";
+export * from "./discovery-notification";
