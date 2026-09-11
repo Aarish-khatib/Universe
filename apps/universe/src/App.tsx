@@ -96,7 +96,10 @@ type OverlayKey =
   | "orbits"
   | "gravity"
   | "humanity"
-  | "knowledge";
+  | "knowledge"
+  | "discovery"
+  | "waypoints"
+  | "poi";
 
 interface HumanitySnapshot {
   civilizationName: string;
