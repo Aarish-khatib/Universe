@@ -8,7 +8,7 @@
    Reads AtmosphericEntryState each frame via prop.
    ============================================================ */
 
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from \"react\";
 import type { AtmosphericEntryState } from "@known-universe/engine";
 
 function distLabel(m: number): string {
