@@ -25,6 +25,11 @@ import {
   buildNotification,
   ScaleTransitionController,
   AtmosphericEntryController,
+  PoiSystem,
+  MarkerApi,
+  PhotoModeController,
+  NarrativeLayer,
+  PerformanceBudget,
 } from "@known-universe/engine";
 
 import type {
@@ -1545,6 +1550,22 @@ export class UniverseSession {
 
   readonly atmosphericEntry: AtmosphericEntryController =
     new AtmosphericEntryController();
+
+  /* === Phase 3+4: Extension systems === */
+  readonly poiSystem: PoiSystem =
+    PoiSystem.loadFromLocalStorage();
+
+  readonly markerApi: MarkerApi =
+    MarkerApi.loadFromLocalStorage();
+
+  readonly photoMode: PhotoModeController =
+    new PhotoModeController();
+
+  readonly narrative: NarrativeLayer =
+    new NarrativeLayer();
+
+  readonly performanceBudget: PerformanceBudget =
+    new PerformanceBudget();
 
 
   constructor(
@@ -4109,6 +4130,8 @@ export class UniverseSession {
     /* Persist exploration data on dispose */
     try {
       this.discoveryLog.saveToLocalStorage();
+      this.poiSystem.saveToLocalStorage();
+      this.markerApi.saveToLocalStorage();
     } catch { /* quota or SSR */ }
 
 
