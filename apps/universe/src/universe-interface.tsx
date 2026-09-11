@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -20,6 +21,9 @@ import type {
   UniverseSessionSnapshot,
   UniverseViewMode,
 } from "./universe-session";
+
+import { DiscoveryPanel } from "./Components/DiscoveryPanel";
+import { WaypointPanel } from "./Components/WaypointPanel";
 
 
 export const UNIVERSE_INTERFACE_VERSION =
@@ -2325,6 +2329,38 @@ export const UniverseInterface =
         );
 
 
+      /* === Phase 1: Exploration panels === */
+      const [
+        discoveryLogOpen,
+        setDiscoveryLogOpen,
+      ] =
+        useState(false);
+
+      const [
+        waypointsOpen,
+        setWaypointsOpen,
+      ] =
+        useState(false);
+
+      const handleFlyToFromLog = useCallback(
+        (entityId: string) => {
+          (session as { flyToEntity?: (id: string) => void }).flyToEntity?.(entityId);
+          setDiscoveryLogOpen(false);
+        },
+        [session],
+      );
+
+      const handleWaypointActivate = useCallback(
+        (wp: { entityId?: string }) => {
+          if (wp.entityId) {
+            (session as { flyToEntity?: (id: string) => void }).flyToEntity?.(wp.entityId);
+          }
+          setWaypointsOpen(false);
+        },
+        [session],
+      );
+
+
       const selected =
         snapshot.selected;
 
@@ -3636,6 +3672,27 @@ export const UniverseInterface =
                 </span>
               </div>
             )}
+
+
+          {/* ==================================================
+              PHASE 1: DISCOVERY + WAYPOINT PANELS
+              ================================================== */}
+
+          {discoveryLogOpen && (
+            <DiscoveryPanel
+              log={(session as { discoveryLog: Parameters<typeof DiscoveryPanel>[0]["log"] }).discoveryLog}
+              onFlyTo={handleFlyToFromLog}
+              onClose={() => setDiscoveryLogOpen(false)}
+            />
+          )}
+
+          {waypointsOpen && (
+            <WaypointPanel
+              system={(session as { waypointSystem: Parameters<typeof WaypointPanel>[0]["system"] }).waypointSystem}
+              onActivate={handleWaypointActivate}
+              onClose={() => setWaypointsOpen(false)}
+            />
+          )}
 
 
           {/* ==================================================
