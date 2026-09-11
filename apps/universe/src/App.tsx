@@ -51,6 +51,8 @@ import {
 import SettingsPanel from "./Components/SettingsPanel";
 import { DiscoveryPanel } from "./Components/DiscoveryPanel";
 import { WaypointPanel } from "./Components/WaypointPanel";
+import { DiscoveryToast } from "./Components/DiscoveryToast";
+import { AtmosphericOverlay } from "./Components/AtmosphericOverlay";
 
 import "./App.css";
 
@@ -3175,6 +3177,19 @@ function App() {
           temporalLabel
         }
       />
+
+      {/* === Phase 2: Atmospheric Overlay (always mounted, shows when in atmo) === */}
+      <AtmosphericOverlay
+        entry={(runtimeRef.current as { atmosphericEntry?: { current: unknown } })?.atmosphericEntry?.current as Parameters<typeof AtmosphericOverlay>[0]["entry"] ?? null}
+      />
+
+      {/* === Phase 2: Discovery Toasts === */}
+      {runtimeRef.current && (
+        <DiscoveryToast
+          queue={(runtimeRef.current as { notificationQueue: Parameters<typeof DiscoveryToast>[0]["queue"] }).notificationQueue}
+          onFlyTo={handleFlyToFromLog}
+        />
+      )}
 
       {/* === Phase 1: Exploration Panels === */}
       {discoveryLogOpen && runtimeRef.current && (
