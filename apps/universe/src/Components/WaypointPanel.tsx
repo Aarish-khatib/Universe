@@ -4,7 +4,7 @@
    and activate autopilot fly-to from any waypoint.
    ============================================================ */
 
-import { useEffect, useState } from \"react\";
+import { useEffect, useState } from "react";
 import type { Waypoint, WaypointSystem } from "@known-universe/engine";
 
 function distLabel(ly: number): string {
