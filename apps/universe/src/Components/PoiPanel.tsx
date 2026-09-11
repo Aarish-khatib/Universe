@@ -5,7 +5,7 @@
    with fly-to, mark-visited, and user-mark actions.
    ============================================================ */
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from \"react\";
 import type { PointOfInterest, PoiSystem, PoiCategory } from "@known-universe/engine";
 
 const CATEGORY_COLORS: Record<PoiCategory, string> = {
