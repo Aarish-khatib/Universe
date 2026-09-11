@@ -2,7 +2,6 @@
    universe-extension-api.ts  v1
    Clean public facade that aggregates all Phase 4 extension
    systems into one composable surface.
-   Consumers import from here rather than individual modules.
    ============================================================ */
 
 export const UNIVERSE_EXTENSION_API_VERSION = 1;
@@ -25,30 +24,26 @@ export { generateNebula, generateSectorNebulae } from "./nebula-generator";
 export type { QualityTier, PerformanceSample, BudgetRecommendation } from "./performance-budget";
 export { PerformanceBudget } from "./performance-budget";
 
-/**
- * UniverseExtensionBundle — instantiate all Phase 4 systems
- * together for easy wiring into UniverseSession.
- */
+import { MarkerApi } from "./marker-api";
+import { PhotoModeController } from "./photo-mode";
+import { NarrativeLayer } from "./narrative-layer";
+import { PoiSystem } from "./poi-system";
+import { PerformanceBudget } from "./performance-budget";
+
 export interface UniverseExtensionBundle {
-  markers: import("./marker-api").MarkerApi;
-  photoMode: import("./photo-mode").PhotoModeController;
-  narrative: import("./narrative-layer").NarrativeLayer;
-  poi: import("./poi-system").PoiSystem;
-  performanceBudget: import("./performance-budget").PerformanceBudget;
+  markers: MarkerApi;
+  photoMode: PhotoModeController;
+  narrative: NarrativeLayer;
+  poi: PoiSystem;
+  performanceBudget: PerformanceBudget;
 }
 
 export function createExtensionBundle(): UniverseExtensionBundle {
-  const { MarkerApi }              = require("./marker-api");
-  const { PhotoModeController }    = require("./photo-mode");
-  const { NarrativeLayer }         = require("./narrative-layer");
-  const { PoiSystem }              = require("./poi-system");
-  const { PerformanceBudget }      = require("./performance-budget");
-
   return {
-    markers:          new MarkerApi(),
-    photoMode:        new PhotoModeController(),
-    narrative:        new NarrativeLayer(),
-    poi:              PoiSystem.loadFromLocalStorage(),
+    markers:           new MarkerApi(),
+    photoMode:         new PhotoModeController(),
+    narrative:         new NarrativeLayer(),
+    poi:               PoiSystem.loadFromLocalStorage(),
     performanceBudget: new PerformanceBudget(),
   };
 }
