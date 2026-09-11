@@ -5,7 +5,7 @@
    existing UniverseInterface modal / overlay system.
    ============================================================ */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from \"react\";
 import type { DiscoveryLog, DiscoveryRecord } from "@known-universe/engine";
 
 /* ------------------------------------------------------------------ */
