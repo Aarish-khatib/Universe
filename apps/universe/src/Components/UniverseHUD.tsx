@@ -46,7 +46,8 @@ type OverlayKey =
   | "knowledge"
   | "orbits"
   | "discovery"
-  | "waypoints";
+  | "waypoints"
+  | "poi";
 
 type KnowledgeClass =
   | "observed"
@@ -144,6 +145,7 @@ interface UniverseHUDProps {
   onCompareScale?: () => void;
   onOpenDiscoveryLog?: () => void;
   onOpenWaypoints?: () => void;
+  onOpenPoi?: () => void;
 
   onCommand?: (command: string) => void;
 
@@ -3439,6 +3441,7 @@ export function UniverseHUD({
   onCompareScale,
   onOpenDiscoveryLog,
   onOpenWaypoints,
+  onOpenPoi,
   onCommand,
   humanity,
   performance,
@@ -3724,6 +3727,14 @@ export function UniverseHUD({
               onClick={onOpenWaypoints}
             >
               <span style={{ fontSize: 15, lineHeight: 1 }}>◎</span>
+            </GlassButton>
+
+            <GlassButton
+              label="Points of Interest (⚠)"
+              title="Points of Interest — anomalies, rare worlds, life candidates"
+              onClick={onOpenPoi}
+            >
+              <span style={{ fontSize: 15, lineHeight: 1 }}>⚠</span>
             </GlassButton>
 
             <GlassButton
