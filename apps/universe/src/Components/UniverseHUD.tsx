@@ -44,7 +44,9 @@ type OverlayKey =
   | "gravity"
   | "humanity"
   | "knowledge"
-  | "orbits";
+  | "orbits"
+  | "discovery"
+  | "waypoints";
 
 type KnowledgeClass =
   | "observed"
@@ -140,6 +142,8 @@ interface UniverseHUDProps {
   onOpenSettings?: () => void;
   onDiscoveryMode?: () => void;
   onCompareScale?: () => void;
+  onOpenDiscoveryLog?: () => void;
+  onOpenWaypoints?: () => void;
 
   onCommand?: (command: string) => void;
 
@@ -3433,6 +3437,8 @@ export function UniverseHUD({
   onOpenSettings,
   onDiscoveryMode,
   onCompareScale,
+  onOpenDiscoveryLog,
+  onOpenWaypoints,
   onCommand,
   humanity,
   performance,
@@ -3702,6 +3708,22 @@ export function UniverseHUD({
               }}
             >
               <Icon name="discovery" size={17} />
+            </GlassButton>
+
+            <GlassButton
+              label="Discovery Log (⚑)"
+              title="Discovery Log — bookmarks, anomalies, journey"
+              onClick={onOpenDiscoveryLog}
+            >
+              <span style={{ fontSize: 15, lineHeight: 1 }}>⚑</span>
+            </GlassButton>
+
+            <GlassButton
+              label="Waypoints (◎)"
+              title="Waypoints — set destinations, navigate"
+              onClick={onOpenWaypoints}
+            >
+              <span style={{ fontSize: 15, lineHeight: 1 }}>◎</span>
             </GlassButton>
 
             <GlassButton
