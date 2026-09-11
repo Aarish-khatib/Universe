@@ -54,6 +54,11 @@ import { WaypointPanel } from "./Components/WaypointPanel";
 import { DiscoveryToast } from "./Components/DiscoveryToast";
 import { AtmosphericOverlay } from "./Components/AtmosphericOverlay";
 import { PoiPanel } from "./Components/PoiPanel";
+import { DiscoveryLog } from "@known-universe/engine";
+import { WaypointSystem } from "@known-universe/engine";
+import { PoiSystem } from "@known-universe/engine";
+import { DiscoveryNotificationQueue } from "@known-universe/engine";
+import type { AtmosphericEntryState } from "@known-universe/engine";
 
 import "./App.css";
 
@@ -635,6 +640,12 @@ function bodyGlyph(
       return "â—";
   }
 }
+
+// Module-level exploration singletons — survive React re-renders
+const _discoveryLog = DiscoveryLog.loadFromLocalStorage();
+const _waypointSystem = new WaypointSystem();
+const _poiSystem = PoiSystem.loadFromLocalStorage();
+const _notificationQueue = new DiscoveryNotificationQueue();
 
 function App() {
   const viewportRef =
@@ -3181,40 +3192,36 @@ function App() {
         }
       />
 
-      {/* === Phase 2: Atmospheric Overlay (always mounted, shows when in atmo) === */}
-      <AtmosphericOverlay
-        entry={(runtimeRef.current as { atmosphericEntry?: { current: unknown } })?.atmosphericEntry?.current as Parameters<typeof AtmosphericOverlay>[0]["entry"] ?? null}
-      />
+      {/* === Phase 2: Atmospheric Overlay === */}
+      <AtmosphericOverlay entry={null} />
 
       {/* === Phase 2: Discovery Toasts === */}
-      {runtimeRef.current && (
-        <DiscoveryToast
-          queue={(runtimeRef.current as { notificationQueue: Parameters<typeof DiscoveryToast>[0]["queue"] }).notificationQueue}
-          onFlyTo={handleFlyToFromLog}
-        />
-      )}
+      <DiscoveryToast
+        queue={_notificationQueue}
+        onFlyTo={handleFlyToFromLog}
+      />
 
       {/* === Phase 3: POI Panel === */}
-      {poiOpen && runtimeRef.current && (
+      {poiOpen && (
         <PoiPanel
-          system={(runtimeRef.current as { poiSystem: Parameters<typeof PoiPanel>[0]["system"] }).poiSystem}
+          system={_poiSystem}
           onFlyTo={handleFlyToFromLog}
           onClose={() => setPoiOpen(false)}
         />
       )}
 
       {/* === Phase 1: Exploration Panels === */}
-      {discoveryLogOpen && runtimeRef.current && (
+      {discoveryLogOpen && (
         <DiscoveryPanel
-          log={(runtimeRef.current as { discoveryLog: NonNullable<unknown> }).discoveryLog as Parameters<typeof DiscoveryPanel>[0]["log"]}
+          log={_discoveryLog}
           onFlyTo={handleFlyToFromLog}
           onClose={() => setDiscoveryLogOpen(false)}
         />
       )}
 
-      {waypointsOpen && runtimeRef.current && (
+      {waypointsOpen && (
         <WaypointPanel
-          system={(runtimeRef.current as { waypointSystem: NonNullable<unknown> }).waypointSystem as Parameters<typeof WaypointPanel>[0]["system"]}
+          system={_waypointSystem}
           onActivate={handleWaypointActivate}
           onClose={() => setWaypointsOpen(false)}
         />
