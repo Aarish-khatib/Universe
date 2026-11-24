@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ASTRONOMICAL_UNIT_METERS as AU,
   estimateHohmannTransfer,
+  timeUntilHohmannWindow,
 } from "./transfer-planner";
 
 describe("ideal Hohmann transfer estimator", () => {
@@ -42,5 +43,31 @@ describe("ideal Hohmann transfer estimator", () => {
       expect(() => estimateHohmannTransfer(invalid, AU)).toThrow(RangeError);
     }
     expect(() => estimateHohmannTransfer(AU, AU, 0)).toThrow(RangeError);
+  });
+});
+
+
+describe("next ideal transfer window", () => {
+  it("returns zero when current phase is already aligned", () => {
+    const target = 1.524 * AU;
+    const phase = estimateHohmannTransfer(AU, target).departurePhaseRadians;
+    expect(timeUntilHohmannWindow(AU, target, 0, phase)).toBeCloseTo(0, 8);
+  });
+
+  it("returns half a synodic period for opposite phase", () => {
+    const target = 1.524 * AU;
+    const estimate = estimateHohmannTransfer(AU, target);
+    const wait = timeUntilHohmannWindow(AU, target, 0, estimate.departurePhaseRadians + Math.PI);
+    expect(wait).toBeCloseTo(estimate.synodicPeriodSeconds! / 2, 5);
+  });
+
+  it("handles inward transfers, full rotations, and coincident orbits", () => {
+    const phase = estimateHohmannTransfer(1.524 * AU, AU).departurePhaseRadians;
+    expect(timeUntilHohmannWindow(1.524 * AU, AU, 4 * Math.PI, phase - 2 * Math.PI)).toBeCloseTo(0, 7);
+    expect(timeUntilHohmannWindow(AU, AU, 0, 0)).toBeNull();
+  });
+
+  it("rejects non-finite longitudes", () => {
+    expect(() => timeUntilHohmannWindow(AU, 1.524 * AU, NaN, 0)).toThrow(RangeError);
   });
 });
