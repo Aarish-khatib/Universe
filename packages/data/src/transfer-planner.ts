@@ -50,3 +50,37 @@ export function estimateHohmannTransfer(
     synodicPeriodSeconds: difference === 0 ? null : tau / difference,
   };
 }
+
+/**
+ * Time until the next ideal Hohmann departure alignment, given the current
+ * heliocentric longitudes in radians. Assumes fixed circular coplanar orbits.
+ * Returns null when both mean motions are equal (no recurring alignment).
+ */
+export function timeUntilHohmannWindow(
+  originRadiusMeters: number,
+  targetRadiusMeters: number,
+  originLongitudeRadians: number,
+  targetLongitudeRadians: number,
+  gravitationalParameter = SOLAR_GRAVITATIONAL_PARAMETER,
+): number | null {
+  const estimate = estimateHohmannTransfer(
+    originRadiusMeters,
+    targetRadiusMeters,
+    gravitationalParameter,
+  );
+  if (!Number.isFinite(originLongitudeRadians) || !Number.isFinite(targetLongitudeRadians)) {
+    throw new RangeError("Longitudes must be finite radians");
+  }
+  if (estimate.synodicPeriodSeconds === null) return null;
+
+  const originMotion = Math.sqrt(gravitationalParameter / originRadiusMeters ** 3);
+  const targetMotion = Math.sqrt(gravitationalParameter / targetRadiusMeters ** 3);
+  const relativeMotion = targetMotion - originMotion;
+  const tau = 2 * Math.PI;
+  const normalize = (angle: number) => ((angle % tau) + tau) % tau;
+  const currentPhase = normalize(targetLongitudeRadians - originLongitudeRadians);
+  const remainingPhase = normalize(
+    Math.sign(relativeMotion) * (estimate.departurePhaseRadians - currentPhase),
+  );
+  return remainingPhase / Math.abs(relativeMotion);
+}
