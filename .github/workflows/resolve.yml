@@ -1,0 +1,23 @@
+name: Resolve workspace tools
+on:
+  push:
+    branches: [maintenance/resolve-workspace-lock]
+permissions:
+  contents: read
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --save-dev --save-exact --ignore-scripts vitest@4 typescript@~6.0.2 concurrently@9
+      - name: Export manifests
+        run: |
+          for file in package.json package-lock.json; do
+            echo "BEGIN-$file"
+            gzip -c "$file" | base64
+            echo "END-$file"
+          done
+      - run: npm run check
