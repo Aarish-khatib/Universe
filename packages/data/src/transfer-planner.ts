@@ -47,6 +47,6 @@ export function estimateHohmannTransfer(
     totalDeltaV: departureDeltaV + arrivalDeltaV,
     flightSeconds,
     departurePhaseRadians,
-    synodicPeriodSeconds: difference < 1e-15 ? null : tau / difference,
+    synodicPeriodSeconds: difference === 0 ? null : tau / difference,
   };
 }
