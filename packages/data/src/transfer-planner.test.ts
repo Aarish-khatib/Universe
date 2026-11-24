@@ -29,6 +29,14 @@ describe("ideal Hohmann transfer estimator", () => {
     expect(inward.totalDeltaV).toBeCloseTo(outward.totalDeltaV, 8);
   });
 
+
+  it("keeps a finite synodic period for nearby but distinct orbits", () => {
+    const result = estimateHohmannTransfer(AU, AU * (1 + 1e-10));
+    expect(result.synodicPeriodSeconds).not.toBeNull();
+    expect(result.synodicPeriodSeconds).toBeGreaterThan(0);
+    expect(Number.isFinite(result.synodicPeriodSeconds)).toBe(true);
+  });
+
   it("rejects invalid orbital inputs", () => {
     for (const invalid of [0, -1, Infinity, NaN]) {
       expect(() => estimateHohmannTransfer(invalid, AU)).toThrow(RangeError);
