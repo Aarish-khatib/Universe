@@ -60,7 +60,8 @@ export class WaypointSystem {
   addEntity(entityId: string, label: string, positionLy: readonly [number, number, number], note?: string): Waypoint {
     const wp: Waypoint = {
       id: uid(), label, kind: "entity", entityId, positionLy,
-      createdAt: Date.now(), note, isPinned: false,
+      createdAt: Date.now(), isPinned: false,
+      ...(note !== undefined && { note }),
     };
     this.waypoints.set(wp.id, wp);
     this.emit({ type: "added", waypoint: wp });
@@ -70,7 +71,8 @@ export class WaypointSystem {
   addCoordinates(label: string, positionLy: readonly [number, number, number], note?: string): Waypoint {
     const wp: Waypoint = {
       id: uid(), label, kind: "coordinates", positionLy,
-      createdAt: Date.now(), note, isPinned: false,
+      createdAt: Date.now(), isPinned: false,
+      ...(note !== undefined && { note }),
     };
     this.waypoints.set(wp.id, wp);
     this.emit({ type: "added", waypoint: wp });

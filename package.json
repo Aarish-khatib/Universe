@@ -13,5 +13,10 @@
     "test": "vitest run",
     "check:packages": "tsc -p packages/core && tsc -p packages/engine && tsc -p packages/data && tsc -p packages/render-three",
     "check": "npm test && npm run check:packages && npm run lint --workspaces --if-present && npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "9.2.5",
+    "typescript": "6.0.3",
+    "vitest": "4.1.12"
   }
 }

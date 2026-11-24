@@ -135,10 +135,10 @@ export class DiscoveryLog {
         lastVisitedAt: now,
         visitCount: 1,
         isBookmarked: false,
-        coordinates: params.coordinates,
-        seedKey: params.seedKey,
-        parentId: params.parentId,
-        anomalyScore: params.anomalyScore,
+        ...(params.coordinates !== undefined && { coordinates: params.coordinates }),
+        ...(params.seedKey !== undefined && { seedKey: params.seedKey }),
+        ...(params.parentId !== undefined && { parentId: params.parentId }),
+        ...(params.anomalyScore !== undefined && { anomalyScore: params.anomalyScore }),
         tags: params.tags ?? [],
       };
       this.records.set(params.id, record);
@@ -205,7 +205,9 @@ export class DiscoveryLog {
   addNote(id: string, notes: string): void {
     const r = this.records.get(id);
     if (!r) return;
-    const updated = { ...r, notes: notes.trim() || undefined };
+    const { notes: previousNotes, ...withoutNotes } = r;
+    const trimmed = notes.trim();
+    const updated = trimmed ? { ...withoutNotes, notes: trimmed } : withoutNotes;
     this.records.set(id, updated);
     this.emit({ type: "noted", record: updated });
   }

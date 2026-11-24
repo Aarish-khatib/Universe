@@ -86,14 +86,14 @@ export class MarkerApi {
       id: uid(),
       kind: params.kind,
       label: params.label,
-      body: params.body,
-      icon: params.icon,
-      color: params.color,
+      ...(params.body !== undefined && { body: params.body }),
+      ...(params.icon !== undefined && { icon: params.icon }),
+      ...(params.color !== undefined && { color: params.color }),
       transform: params.transform,
       visibility: params.visibility ?? "session",
       createdAt: now,
       updatedAt: now,
-      metadata: params.metadata,
+      ...(params.metadata !== undefined && { metadata: params.metadata }),
       isActive: true,
     };
     this.markers.set(marker.id, marker);
